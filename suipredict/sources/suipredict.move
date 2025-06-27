@@ -14,7 +14,7 @@ module suipredict::suipredict {
         id: UID,
         balance: Balance<SUI>,
         price: u8,
-        idT: vector<Ticket>,
+        idT: vector<TicketCopy>,
         fixed_price: u128,
         canRedeem: bool
     }
@@ -47,7 +47,7 @@ module suipredict::suipredict {
             id: object::new(ctx),
             balance: balance::zero<SUI>(),
             price: p_price,
-            idT: vector::empty<Ticket>(),
+            idT: vector::empty<TicketCopy>(),
             fixed_price: 0,
             canRedeem: false
         };
@@ -64,10 +64,10 @@ module suipredict::suipredict {
         };
         let ticket_copy = TicketCopy {
             id: object::new(ctx),
-            copy_id: object::id(ticket),
+            copy_id: object::id(&ticket),
             price: pPrice
         };
-        vector::push_back(pool.idT, &ticket_copy);
+        vector::push_back<TicketCopy>(&mut pool.idT, ticket_copy);
         transfer::public_transfer(ticket, ctx.sender());
     }
 
