@@ -6,6 +6,8 @@ module suipredict::suipredict {
     use sui::coin::{Self, Coin, into_balance, from_balance};
     use SupraOracle::SupraSValueFeed::{get_price, OracleHolder};
 
+    const ECanNotRedeem: u64 = 0;
+
     public struct OracleSetting has key, store {
         id: UID,
         oracleID: u32
@@ -49,7 +51,7 @@ module suipredict::suipredict {
             price: p_price,
             idT: vector::empty<TicketCopy>(),
             fixed_price: 0,
-            canRedeem: false
+            canRedeem: false,
         };
         transfer::share_object(pool);
     }
@@ -77,5 +79,32 @@ module suipredict::suipredict {
         pool.canRedeem = true;
     }
 
-    // public fun redeem()
+    public fun redeem_setting(ticket: &mut Ticket, pool: &mut Pool, ctx: &mut TxContext) {
+        assert!(pool.canRedeem, ECanNotRedeem);
+        let fixed_price = pool.fixed_price;
+        let v_len = vector::length<TicketCopy>(&pool.idT);
+        let mut v_gap = vector::empty<u128>();
+        let mut i = 0;
+        while (i < v_len) {
+            b_ticket = vector::borrow<TicketCopy>(&pool.idT, i);
+            let gap = b_ticket.price - fixed_price;
+            vector::push_back<u128>(&mut v_gap, gap);
+            i = i + 1;
+        }
+        let v_len_gap = vector::length<u128>(&v_gap);
+        let mut min_val: u128 = *vector::borrow<u128>(v, 0);
+        let mut indices = vector::empty<u64>();
+        let mut i_gap = 0;
+        while (i_gap < v_len_gap) {
+            let b_gap = vector::borrow<u128>(&v_gap, i_gap);
+            if (b_gap < min_val) {
+                min_val = b_gap;
+                indices = vector::empty<u64>();
+                vector::push_back<u64>(&mut indices, i_gap as u64);
+            } else if (b_gap == min_val) {
+                vector::push_back<u64>(&mut indices, i_gap as u64);
+            }
+            i_gap = i_gap + 1;
+        };
+    }
 }
