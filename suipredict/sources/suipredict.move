@@ -18,7 +18,9 @@ module suipredict::suipredict {
         price: u8,
         idT: vector<TicketCopy>,
         fixed_price: u128,
-        canRedeem: bool
+        canRedeem: bool,
+        prize: Balance<SUI>,
+        indices: vector<u64>,
     }
     
     public struct Ticket has key, store {
@@ -44,6 +46,14 @@ module suipredict::suipredict {
         transfer::transfer(admin_cap, ctx.sender());
     }
 
+    public fun create_oracle_setting(admin_cap: &AdminCap, oracleID: u32, ctx: &mut TxContext) {
+        let oracle_setting = OracleSetting {
+            id: object::new(ctx),
+            oracleID: oracleID
+        };
+        transfer::share_object(oracle_setting);
+    }
+
     public fun create_pool(admin: &AdminCap, p_price: u8, ctx: &mut TxContext){
         let pool = Pool {
             id: object::new(ctx),
@@ -52,6 +62,8 @@ module suipredict::suipredict {
             idT: vector::empty<TicketCopy>(),
             fixed_price: 0,
             canRedeem: false,
+            prize: balance::zero<SUI>(),
+            indices: vector::empty<u64>()
         };
         transfer::share_object(pool);
     }
@@ -76,35 +88,48 @@ module suipredict::suipredict {
     public fun fixed_price(oracleHolder: &OracleHolder, pool: &mut Pool, setting: &OracleSetting, ctx: &mut TxContext) {
         let (price, decimal_u16, _, _) = get_price(oracleHolder, setting.oracleID);
         pool.fixed_price = price;
-        pool.canRedeem = true;
     }
 
     public fun redeem_setting(ticket: &mut Ticket, pool: &mut Pool, ctx: &mut TxContext) {
-        assert!(pool.canRedeem, ECanNotRedeem);
         let fixed_price = pool.fixed_price;
         let v_len = vector::length<TicketCopy>(&pool.idT);
         let mut v_gap = vector::empty<u128>();
         let mut i = 0;
         while (i < v_len) {
-            b_ticket = vector::borrow<TicketCopy>(&pool.idT, i);
+            let b_ticket = vector::borrow<TicketCopy>(&pool.idT, i);
             let gap = b_ticket.price - fixed_price;
             vector::push_back<u128>(&mut v_gap, gap);
             i = i + 1;
-        }
+        };
         let v_len_gap = vector::length<u128>(&v_gap);
-        let mut min_val: u128 = *vector::borrow<u128>(v, 0);
-        let mut indices = vector::empty<u64>();
+        let mut min_val = *vector::borrow<u128>(&v_gap, 0);
         let mut i_gap = 0;
         while (i_gap < v_len_gap) {
-            let b_gap = vector::borrow<u128>(&v_gap, i_gap);
+            let b_gap = *vector::borrow(&v_gap, i_gap);
             if (b_gap < min_val) {
                 min_val = b_gap;
-                indices = vector::empty<u64>();
-                vector::push_back<u64>(&mut indices, i_gap as u64);
+                pool.indices = vector::empty<u64>();
+                vector::push_back<u64>(&mut pool.indices, i_gap as u64);
             } else if (b_gap == min_val) {
-                vector::push_back<u64>(&mut indices, i_gap as u64);
-            }
+                vector::push_back<u64>(&mut pool.indices, i_gap as u64);
+            };
             i_gap = i_gap + 1;
         };
+        pool.canRedeem = true;
+    }
+    public fun redeem(ticket: &mut Ticket, pool: &mut Pool, ctx: &mut TxContext) {
+        assert!(pool.canRedeem, ECanNotRedeem);
+        let len_indices = vector::length<u64>(&pool.indices);
+        let mut i = 0;
+        while (i < len_indices) {
+            let index = *vector::borrow<u64>(&pool.indices, i);
+            let b_ticket = vector::borrow<TicketCopy>(&pool.idT, index);
+            if (object::id(ticket) == b_ticket.copy_id) {
+                let s_prize = balance::value<SUI>(&pool.prize) / (len_indices as u64);
+                let mut coin = coin::take<SUI>(&mut pool.prize, s_prize, ctx);
+                transfer::public_transfer(coin, ctx.sender());
+            };
+            i = i + 1;
+        }
     }
 }
