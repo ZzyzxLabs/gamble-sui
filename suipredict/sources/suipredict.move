@@ -1,6 +1,6 @@
 module suipredict::suipredict {
 
-    // 引用模組
+    // import model
     use sui::tx_context::{Self, TxContext};
     use sui::balance::{Self,Balance};
     use sui::sui::SUI;
@@ -8,19 +8,19 @@ module suipredict::suipredict {
     use sui::clock::{Self, Clock};
     use SupraOracle::SupraSValueFeed::{get_price, OracleHolder};
 
-    // 定義常數
+    // declare constants
     const ECanNotRedeem: u64 = 0;
     const ETimeNotReached: u64 = 1;
     const EAccessDenied: u64 = 403;
 
-    // 定義結構
-    // 預言機配置
+    // declare types
+    // declare oracle ID
     public struct OracleSetting has key, store {
         id: UID,
         oracleID: u32
     }
 
-    // 定義獎池
+    // declare pool
     public struct Pool has key {
         id: UID,
         balance: Balance<SUI>,
@@ -30,30 +30,29 @@ module suipredict::suipredict {
         canRedeem: bool,
         prize: Balance<SUI>,
         indices: vector<u64>,
-        start_time: &Clock,
-        end_time: &Clock
+        end_time: u64
     }
     
-    // 定義票券
+    // declare ticket
     public struct Ticket has key, store {
         id: UID,
         pool_id: ID,
         price: u128,
     }
 
-    // 定義票券副本
+    // declare ticket copy
     public struct TicketCopy has key, store {
         id: UID,
         copy_id: ID,
         price: u128,
     }
 
-    // 定義管理員
+    // declare admin
     public struct AdminCap has key, store {
         id: UID
     }
 
-    // 部署時執行
+    // init
     fun init(ctx: &mut TxContext) {
         let admin_cap = AdminCap {
             id: object::new(ctx)
@@ -61,27 +60,23 @@ module suipredict::suipredict {
         transfer::transfer(admin_cap, ctx.sender());
     }
 
-    // 啟動遊戲
+    // start game
     public fun start_game(
         admin_cap: &AdminCap,
         oracleHolder: &OracleHolder,
         oracleID: u32,
         p_price: u8,
-        start_time: &Clock,
         end_time: &Clock,
         ctx: &mut TxContext
-    ) {
-        // 檢查管理員權限
-        assert!(object::id(admin_cap) == ctx.sender(), EAccessDenied);
-        
-        // 創建預言機設置
+    ) { 
+        // Create oracle setting
         create_oracle_setting(admin_cap, oracleID, ctx);
         
-        // 創建獎池
-        create_pool(admin_cap, p_price, start_time, end_time, ctx);
+        // Create prize pool
+        create_pool(admin_cap, p_price, end_time, ctx);
     }
 
-    // 管理員設置預言機
+    // Administrator sets oracle
     public fun create_oracle_setting(
         admin_cap: &AdminCap,
         oracleID: u32,
@@ -94,12 +89,11 @@ module suipredict::suipredict {
         transfer::share_object(oracle_setting);
     }
 
-    // 管理員創建一個新的獎池
+    // Administrator creates a new prize pool
     public fun create_pool(
         admin: &AdminCap,
         p_price: u8,
-        start_time: &Clock,
-        end_time: &Clock,
+        clock: &Clock,
         ctx: &mut TxContext
     ) {
         let pool = Pool {
@@ -111,13 +105,12 @@ module suipredict::suipredict {
             canRedeem: false,
             prize: balance::zero<SUI>(),
             indices: vector::empty<u64>(),
-            start_time: clock::timestamp_ms(start_time)
-            end_time: clock::timestamp_ms(end_time)
+            end_time: clock::timestamp_ms(clock)
         };
         transfer::share_object(pool);
     }
 
-    // 玩家購買票券
+    // Player buys a ticket
     public fun buy_ticket(
         pool: &mut Pool,
         in_coin: &mut Coin<SUI>,
@@ -140,7 +133,7 @@ module suipredict::suipredict {
         transfer::public_transfer(ticket, ctx.sender());
     }
 
-    // 從預言機獲取實際價格
+    // Fetch actual price from oracle
     public fun fixed_price(
         oracleHolder: &OracleHolder,
         pool: &mut Pool,
@@ -151,14 +144,14 @@ module suipredict::suipredict {
         pool.fixed_price = price;
     }
 
-    // 兌換獎勵機制
+    // Redemption mechanism
     public fun redeem_setting(
         ticket: &mut Ticket,
         pool: &mut Pool,
         current_time: &Clock,
         ctx: &mut TxContext
     ) {
-        // 檢查是否可以結算
+        // Check if settlement is allowed
         assert!(clock::timestamp_ms(current_time) >= pool.end_time, ETimeNotReached);
 
         let fixed_price = pool.fixed_price;
@@ -191,7 +184,7 @@ module suipredict::suipredict {
         pool.canRedeem = true;
     }
 
-    // 贏家兌換獎金
+    // Winners redeem prize
     public fun redeem(
         ticket: &mut Ticket,
         pool: &mut Pool,
