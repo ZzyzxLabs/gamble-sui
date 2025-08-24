@@ -117,7 +117,7 @@ module suipredict::suipredict {
         pPrice: u128,
         ctx: &mut TxContext
     ) {
-        let buy_coin = coin::split(in_coin, (pool.price as u64), ctx);
+        let buy_coin = coin::split(in_coin, (pool.price as u128), ctx);
         balance::join(&mut pool.balance, into_balance(buy_coin));
         let ticket = Ticket {
             id: object::new(ctx),
@@ -161,7 +161,12 @@ module suipredict::suipredict {
 
         while (i < v_len) {
             let b_ticket = vector::borrow<TicketCopy>(&pool.idT, i);
-            let gap = b_ticket.price - fixed_price;
+            // avoid overflow
+            let gap = if (b_ticket.price > fixed_price){
+                b_ticket.price - fixed_price
+            } else {
+                fixed_price - b_ticket.price
+            };
             vector::push_back<u128>(&mut v_gap, gap);
             i = i + 1;
         };
