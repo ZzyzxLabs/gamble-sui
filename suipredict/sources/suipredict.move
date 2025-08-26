@@ -146,7 +146,7 @@ module suipredict::suipredict {
 
     // Redemption mechanism
     public fun redeem_setting(
-        ticket: &mut Ticket,
+        admin: &AdminCap,
         pool: &mut Pool,
         current_time: &Clock,
         ctx: &mut TxContext
