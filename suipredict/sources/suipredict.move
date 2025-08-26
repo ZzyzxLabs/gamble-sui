@@ -191,6 +191,7 @@ module suipredict::suipredict {
         ctx: &mut TxContext
     ) {
         assert!(pool.canRedeem, ECanNotRedeem);
+        assert!(ticket.pool_id == object::id(&pool), EAccessDenied);
         let len_indices = vector::length<u64>(&pool.indices);
         let mut i = 0;
 
