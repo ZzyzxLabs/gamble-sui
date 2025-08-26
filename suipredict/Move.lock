@@ -68,3 +68,8 @@ dependencies = [
   { id = "Sui", name = "Sui" },
   { id = "supra_utils", name = "supra_utils" },
 ]
+
+[move.toolchain-version]
+compiler-version = "1.54.0"
+edition = "2024.beta"
+flavor = "sui"
