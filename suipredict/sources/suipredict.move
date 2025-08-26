@@ -24,11 +24,10 @@ module suipredict::suipredict {
     public struct Pool has key {
         id: UID,
         balance: Balance<SUI>,
-        price: u8,
+        price: u64,
         idT: vector<TicketCopy>,
-        fixed_price: u128,
+        fixed_price: u64,
         canRedeem: bool,
-        prize: Balance<SUI>,
         indices: vector<u64>,
         end_time: u64
     }
@@ -37,14 +36,14 @@ module suipredict::suipredict {
     public struct Ticket has key, store {
         id: UID,
         pool_id: ID,
-        price: u128,
+        price: u64,
     }
 
     // declare ticket copy
     public struct TicketCopy has key, store {
         id: UID,
         copy_id: ID,
-        price: u128,
+        price: u64,
     }
 
     // declare admin
@@ -65,7 +64,7 @@ module suipredict::suipredict {
         admin_cap: &AdminCap,
         oracleHolder: &OracleHolder,
         oracleID: u32,
-        p_price: u8,
+        p_price: u64,
         end_time: &Clock,
         ctx: &mut TxContext
     ) { 
@@ -92,7 +91,7 @@ module suipredict::suipredict {
     // Administrator creates a new prize pool
     public fun create_pool(
         admin: &AdminCap,
-        p_price: u8,
+        p_price: u64,
         clock: &Clock,
         ctx: &mut TxContext
     ) {
@@ -103,7 +102,6 @@ module suipredict::suipredict {
             idT: vector::empty<TicketCopy>(),
             fixed_price: 0,
             canRedeem: false,
-            prize: balance::zero<SUI>(),
             indices: vector::empty<u64>(),
             end_time: clock::timestamp_ms(clock)
         };
@@ -114,7 +112,7 @@ module suipredict::suipredict {
     public fun buy_ticket(
         pool: &mut Pool,
         in_coin: &mut Coin<SUI>,
-        pPrice: u128,
+        pPrice: u64,
         ctx: &mut TxContext
     ) {
         let buy_coin = coin::split(in_coin, (pool.price as u64), ctx);
@@ -141,7 +139,7 @@ module suipredict::suipredict {
         ctx: &mut TxContext
     ) {
         let (price, decimal_u16, _, _) = get_price(oracleHolder, setting.oracleID);
-        pool.fixed_price = price;
+        pool.fixed_price = (price as u64);
     }
 
     // Redemption mechanism
@@ -156,18 +154,23 @@ module suipredict::suipredict {
 
         let fixed_price = pool.fixed_price;
         let v_len = vector::length<TicketCopy>(&pool.idT);
-        let mut v_gap = vector::empty<u128>();
+        let mut v_gap = vector::empty<u64>();
         let mut i = 0;
 
         while (i < v_len) {
             let b_ticket = vector::borrow<TicketCopy>(&pool.idT, i);
-            let gap = b_ticket.price - fixed_price;
-            vector::push_back<u128>(&mut v_gap, gap);
+            // avoid overflow
+            let gap = if (b_ticket.price > fixed_price){
+                b_ticket.price - fixed_price
+            } else {
+                fixed_price - b_ticket.price
+            };
+            vector::push_back<u64>(&mut v_gap, gap);
             i = i + 1;
         };
 
-        let v_len_gap = vector::length<u128>(&v_gap);
-        let mut min_val = *vector::borrow<u128>(&v_gap, 0);
+        let v_len_gap = vector::length<u64>(&v_gap);
+        let mut min_val = *vector::borrow<u64>(&v_gap, 0);
         let mut i_gap = 0;
 
         while (i_gap < v_len_gap) {
@@ -191,7 +194,7 @@ module suipredict::suipredict {
         ctx: &mut TxContext
     ) {
         assert!(pool.canRedeem, ECanNotRedeem);
-        assert!(ticket.pool_id == object::id(&pool), EAccessDenied);
+        assert!(ticket.pool_id == object::id(pool), EAccessDenied);
         let len_indices = vector::length<u64>(&pool.indices);
         let mut i = 0;
 
@@ -199,8 +202,8 @@ module suipredict::suipredict {
             let index = *vector::borrow<u64>(&pool.indices, i);
             let b_ticket = vector::borrow<TicketCopy>(&pool.idT, index);
             if (object::id(ticket) == b_ticket.copy_id) {
-                let s_prize = balance::value<SUI>(&pool.prize) / (len_indices as u64);
-                let mut coin = coin::take<SUI>(&mut pool.prize, s_prize, ctx);
+                let s_prize = balance::value<SUI>(&pool.balance) / (len_indices as u64);
+                let mut coin = coin::take<SUI>(&mut pool.balance, s_prize, ctx);
                 transfer::public_transfer(coin, ctx.sender());
             };
             i = i + 1;
