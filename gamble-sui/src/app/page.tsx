@@ -3,6 +3,7 @@ import NavBar from "@/component/nav";
 import Image from "next/image";
 import { useState } from "react";
 import Ticket from "@/component/ticket";
+import Admin from "@/component/admin";
 export default function Home() {
   const [isAdminView, setIsAdminView] = useState(false);
   
@@ -14,7 +15,7 @@ export default function Home() {
       />
     <div className="flex min-h-screen flex-col items-center justify-center p-24">
       {isAdminView ? (
-        <div>Admin Content</div>
+        <Admin />
       ) : (
         <Ticket />
       )}
