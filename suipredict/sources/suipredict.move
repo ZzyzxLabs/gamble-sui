@@ -28,7 +28,6 @@ module suipredict::suipredict {
         idT: vector<TicketCopy>,
         fixed_price: u128,
         canRedeem: bool,
-        prize: Balance<SUI>,
         indices: vector<u64>,
         end_time: u64
     }
@@ -103,7 +102,6 @@ module suipredict::suipredict {
             idT: vector::empty<TicketCopy>(),
             fixed_price: 0,
             canRedeem: false,
-            prize: balance::zero<SUI>(),
             indices: vector::empty<u64>(),
             end_time: clock::timestamp_ms(clock)
         };
@@ -161,7 +159,12 @@ module suipredict::suipredict {
 
         while (i < v_len) {
             let b_ticket = vector::borrow<TicketCopy>(&pool.idT, i);
-            let gap = b_ticket.price - fixed_price;
+            // avoid overflow
+            let gap = if (b_ticket.price > fixed_price){
+                b_ticket.price - fixed_price
+            } else {
+                fixed_price - b_ticket.price
+            };
             vector::push_back<u128>(&mut v_gap, gap);
             i = i + 1;
         };
@@ -198,8 +201,8 @@ module suipredict::suipredict {
             let index = *vector::borrow<u64>(&pool.indices, i);
             let b_ticket = vector::borrow<TicketCopy>(&pool.idT, index);
             if (object::id(ticket) == b_ticket.copy_id) {
-                let s_prize = balance::value<SUI>(&pool.prize) / (len_indices as u64);
-                let mut coin = coin::take<SUI>(&mut pool.prize, s_prize, ctx);
+                let s_prize = balance::value<SUI>(&pool.balance) / (len_indices as u64);
+                let mut coin = coin::take<SUI>(&mut pool.balance, s_prize, ctx);
                 transfer::public_transfer(coin, ctx.sender());
             };
             i = i + 1;
