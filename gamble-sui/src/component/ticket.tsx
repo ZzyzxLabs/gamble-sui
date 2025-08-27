@@ -101,7 +101,7 @@ export default function GambleSUIPage() {
   return (
     <div className="min-h-screen w-full bg-[#0b0b0f] text-zinc-100 text-white">
       {/* 背景裝飾 */}
-      <div className="pointer-events-none fixed inset-0 -z-10">
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-32 -left-32 h-80 w-80 rounded-full blur-3xl opacity-30 bg-indigo-600" />
         <div className="absolute top-1/2 -right-32 h-80 w-80 rounded-full blur-3xl opacity-20 bg-fuchsia-600" />
       </div>
@@ -126,7 +126,7 @@ export default function GambleSUIPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           {/* 左半：票券總覽 */}
           <section className="space-y-4">
-            <Card className="bg-zinc-900/60 relative -z-0 backdrop-blur border-zinc-800 h-197">
+            <Card className="bg-zinc-900/60 relative -z-0 backdrop-blur border-zinc-800 h-197 overflow-y-auto">
               <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2 text-white">
