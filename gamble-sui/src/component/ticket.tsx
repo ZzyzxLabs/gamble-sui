@@ -271,7 +271,7 @@ export default function GambleSUIPage() {
 
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-sm text-zinc-400">
-                        <Switch checked={fastMode} onCheckedChange={setFastMode} id="fast" />
+                        <Switch checked={fastMode} onCheckedChange={setFastMode} id="fast" className="data-[state=checked]:bg-emerald-600" />
                         <Label htmlFor="fast" className="cursor-pointer">Fast Mode</Label>
                       </div>
                       <Dialog>
