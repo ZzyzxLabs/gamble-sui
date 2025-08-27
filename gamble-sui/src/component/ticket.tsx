@@ -99,7 +99,7 @@ export default function GambleSUIPage() {
   }
 
   return (
-    <div className="min-h-screen w-full bg-[#0b0b0f] text-zinc-100">
+    <div className="min-h-screen w-full bg-[#0b0b0f] text-zinc-100 text-white">
       {/* 背景裝飾 */}
       <div className="pointer-events-none fixed inset-0 -z-10">
         <div className="absolute -top-32 -left-32 h-80 w-80 rounded-full blur-3xl opacity-30 bg-indigo-600" />
@@ -113,14 +113,11 @@ export default function GambleSUIPage() {
             <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight flex items-center gap-2">
               <Ticket className="h-6 w-6" /> GambleSUI
             </h1>
-            <p className="text-sm text-zinc-400">在固定時間點比報價、分獎池的趣味小賭場（Sui & IOTA 專案 UI）</p>
+            <p className="text-sm text-zinc-400">Just a little Casino</p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="secondary" className="bg-zinc-800 text-zinc-100 hover:bg-zinc-700">
-              <History className="mr-2 h-4 w-4" /> 交易歷史
-            </Button>
-            <Button className="bg-indigo-600 hover:bg-indigo-500 text-white">
-              <Wallet className="mr-2 h-4 w-4" /> 連接錢包
+              <History className="mr-2 h-4 w-4" /> History
             </Button>
           </div>
         </div>
@@ -129,20 +126,20 @@ export default function GambleSUIPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           {/* 左半：票券總覽 */}
           <section className="space-y-4">
-            <Card className="bg-zinc-900/60 backdrop-blur border-zinc-800">
+            <Card className="bg-zinc-900/60 relative -z-0 backdrop-blur border-zinc-800 h-197">
               <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <LineChart className="h-5 w-5" /> 你的 Tickets
+                  <CardTitle className="flex items-center gap-2 text-white">
+                    <LineChart className="h-5 w-5 text-white" /> Your Tickets
                   </CardTitle>
-                  <CardDescription className="text-zinc-400">總覽你目前持有與歷史結算的票券</CardDescription>
+                  <CardDescription className="text-zinc-300">Tickets Overview</CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
-                    <SelectTrigger className="w-36 bg-zinc-900 border-zinc-700 text-zinc-100">
+                    <SelectTrigger className="w-36 bg-zinc-900 border-zinc-800 text-zinc-100">
                       <SelectValue placeholder="All" />
                     </SelectTrigger>
-                    <SelectContent className="bg-zinc-900 border-zinc-700 text-zinc-100">
+                    <SelectContent className="bg-zinc-900 border-zinc-100 text-zinc-100">
                       <SelectItem value="All">All</SelectItem>
                       <SelectItem value="Active">Active</SelectItem>
                       <SelectItem value="Won">Won</SelectItem>
@@ -151,18 +148,18 @@ export default function GambleSUIPage() {
                     </SelectContent>
                   </Select>
                   <Button variant="secondary" className="bg-zinc-800 text-zinc-100 hover:bg-zinc-700" onClick={() => setTickets(generateDemoTickets())}>
-                    重設假資料
+                    Reset Demo Data
                   </Button>
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <Stat title="總張數" value={tickets.length.toString()} icon={<Ticket className="h-4 w-4" />} />
+                <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4 text-zinc-300">
+                  <Stat title="Amount" value={tickets.length.toString()} icon={<Ticket className="h-4 w-4" />} />
                   <Stat title="Active" value={activeCount.toString()} icon={<LineChart className="h-4 w-4" />} />
-                  <Stat title="總下注" value={formatSui(totalStake)} icon={<Coins className="h-4 w-4" />} />
-                  <Stat title="篩選中" value={filtered.length.toString()} icon={<History className="h-4 w-4" />} />
+                  <Stat title="Total Stake" value={formatSui(totalStake)} icon={<Coins className="h-4 w-4" />} />
+                  <Stat title="Filtered" value={filtered.length.toString()} icon={<History className="h-4 w-4" />} />
                 </div>
-                <div className="rounded-md border border-zinc-800 overflow-hidden">
+                <div className="rounded-md border border-zinc-800 overflow-hidden text-zinc-300">
                   <Table>
                     <TableHeader>
                       <TableRow className="hover:bg-transparent">
@@ -177,14 +174,14 @@ export default function GambleSUIPage() {
                     <TableBody>
                       {filtered.map((t) => (
                         <TableRow key={t.id} className="hover:bg-zinc-900/60">
-                          <TableCell className="font-medium">{t.id}</TableCell>
+                          <TableCell className="font-medium text-zinc-300">{t.id}</TableCell>
                           <TableCell>{t.round}</TableCell>
                           <TableCell>{formatPrice(t.quote)}</TableCell>
                           <TableCell>{formatSui(t.stake)}</TableCell>
                           <TableCell>
                             <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs ${STATUS_COLOR[t.status]}`}>{t.status}</span>
                           </TableCell>
-                          <TableCell className="text-right text-zinc-400">{formatTime(t.placedAt)}</TableCell>
+                          <TableCell className="text-right text-zinc-300">{formatTime(t.placedAt)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -198,20 +195,20 @@ export default function GambleSUIPage() {
           <section className="space-y-4">
             <Card className="bg-zinc-900/60 backdrop-blur border-zinc-800">
               <CardHeader>
-                <CardTitle className="text-lg">購買 Ticket</CardTitle>
-                <CardDescription className="text-zinc-400">在指定輪次輸入你的報價，系統會在結束時結算最接近的玩家</CardDescription>
+                <CardTitle className="text-lg text-white">Buy Ticket</CardTitle>
+                <CardDescription className="text-zinc-400">Enter your price for the chosen round. At settlement, the closest player wins.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-5">
-                <Tabs defaultValue="manual" className="w-full">
+              <CardContent className="space-y-5 text-zinc-300">
+                <Tabs defaultValue="manual" className="w-full"    >
                   <TabsList className="bg-zinc-900 border border-zinc-800">
-                    <TabsTrigger value="manual">手動報價</TabsTrigger>
-                    <TabsTrigger value="quick">快速預設</TabsTrigger>
+                    <TabsTrigger value="manual" className="text-zinc-400 data-[state=active]:text-black">Manual Quote</TabsTrigger>
+                    <TabsTrigger value="quick" className="text-zinc-400 data-[state=active]:text-black">Quick Presets</TabsTrigger>
                   </TabsList>
 
                   {/* 手動報價 */}
                   <TabsContent value="manual" className="space-y-4">
                     <div className="grid gap-3">
-                      <Label>選擇輪次</Label>
+                      <Label>Select Round</Label>
                       <Select value={round} onValueChange={setRound}>
                         <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-100">
                           <SelectValue placeholder="Current Round" />
@@ -224,19 +221,18 @@ export default function GambleSUIPage() {
                     </div>
 
                     <div className="grid gap-3">
-                      <Label>你的報價（SUI/USD）</Label>
+                      <Label>Your Quote (SUI/USD)</Label>
                       <Input
                         value={quote}
                         onChange={(e) => setQuote(e.target.value)}
-                        placeholder="例如 4.7000"
+                        placeholder="Enter your price"
                         className="bg-zinc-900 border-zinc-700 text-zinc-100 placeholder:text-zinc-500"
                       />
-                      <p className="text-xs text-zinc-400">提示：請輸入 4 位小數。系統實際精度以合約為準。</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="grid gap-3">
-                        <Label>購買張數</Label>
+                        <Label>Quantity</Label>
                         <Input
                           inputMode="numeric"
                           value={quantity}
@@ -246,7 +242,7 @@ export default function GambleSUIPage() {
                         />
                       </div>
                       <div className="grid gap-3">
-                        <Label>每張花費（SUI）</Label>
+                        <Label>Price per Ticket (SUI)</Label>
                         <Input
                           inputMode="decimal"
                           value={ticketPrice}
@@ -259,16 +255,16 @@ export default function GambleSUIPage() {
 
                     <div className="rounded-md border border-zinc-800 p-3 bg-zinc-950/50">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-zinc-400">預估花費</span>
+                        <span className="text-zinc-400">Estimated Cost</span>
                         <span className="font-medium">{formatSui(cost)}</span>
                       </div>
                       <Separator className="my-3 bg-zinc-800" />
                       <div className="flex items-center justify-between text-xs text-zinc-400">
-                        <span>報價</span>
+                        <span>Quote</span>
                         <span>{formatPrice(Number(quote) || 0)}</span>
                       </div>
                       <div className="flex items-center justify-between text-xs text-zinc-400">
-                        <span>輪次</span>
+                        <span>Round</span>
                         <span>{round === "current" ? "Current Round" : "Next Round"}</span>
                       </div>
                     </div>
@@ -276,28 +272,28 @@ export default function GambleSUIPage() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-sm text-zinc-400">
                         <Switch checked={fastMode} onCheckedChange={setFastMode} id="fast" />
-                        <Label htmlFor="fast" className="cursor-pointer">快速模式（跳過額外確認）</Label>
+                        <Label htmlFor="fast" className="cursor-pointer">Fast Mode</Label>
                       </div>
                       <Dialog>
                         <DialogTrigger asChild>
-                          <Button disabled={cost <= 0} className="bg-indigo-600 hover:bg-indigo-500 text-white">下單購票</Button>
+                          <Button disabled={cost <= 0} className="bg-indigo-600 hover:bg-indigo-500 text-white">Place Order</Button>
                         </DialogTrigger>
                         <DialogContent className="bg-zinc-900 border-zinc-800 text-zinc-100">
                           <DialogHeader>
-                            <DialogTitle>確認下單</DialogTitle>
-                            <DialogDescription className="text-zinc-400">請再次確認你的報價與花費，提交後將呼叫合約鑄造 Ticket。</DialogDescription>
+                            <DialogTitle>Confirm Order</DialogTitle>
+                            <DialogDescription className="text-zinc-400">Please confirm your quote and cost. Submitting will call the contract to mint your ticket.</DialogDescription>
                           </DialogHeader>
                           <div className="space-y-2 text-sm">
-                            <div className="flex items-center justify-between"><span>輪次</span><span className="font-medium">{round === "current" ? "Current Round" : "Next Round"}</span></div>
-                            <div className="flex items-center justify-between"><span>報價</span><span className="font-medium">{formatPrice(Number(quote) || 0)}</span></div>
-                            <div className="flex items-center justify-between"><span>張數</span><span className="font-medium">{qty}</span></div>
-                            <div className="flex items-center justify-between"><span>每張</span><span className="font-medium">{formatSui(pricePer)}</span></div>
+                            <div className="flex items-center justify-between"><span>Round</span><span className="font-medium">{round === "current" ? "Current Round" : "Next Round"}</span></div>
+                            <div className="flex items-center justify-between"><span>Quote</span><span className="font-medium">{formatPrice(Number(quote) || 0)}</span></div>
+                            <div className="flex items-center justify-between"><span>Quantity</span><span className="font-medium">{qty}</span></div>
+                            <div className="flex items-center justify-between"><span>Price per Ticket</span><span className="font-medium">{formatSui(pricePer)}</span></div>
                             <Separator className="my-2 bg-zinc-800" />
-                            <div className="flex items-center justify-between text-base"><span>總花費</span><span className="font-semibold">{formatSui(cost)}</span></div>
+                            <div className="flex items-center justify-between text-base"><span>Total</span><span className="font-semibold">{formatSui(cost)}</span></div>
                           </div>
                           <DialogFooter>
-                            <Button variant="secondary" className="bg-zinc-800 hover:bg-zinc-700">取消</Button>
-                            <Button onClick={mockPlaceOrder} className="bg-emerald-600 hover:bg-emerald-500 text-white">確認送出</Button>
+                            <Button variant="secondary" className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300">Cancel</Button>
+                            <Button onClick={mockPlaceOrder} className="bg-emerald-600 hover:bg-emerald-500 text-white">Confirm</Button>
                           </DialogFooter>
                         </DialogContent>
                       </Dialog>
@@ -318,7 +314,7 @@ export default function GambleSUIPage() {
                         <Button
                           key={p.label}
                           variant="secondary"
-                          className="bg-zinc-800 hover:bg-zinc-700"
+                          className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
                           onClick={() => {
                             const base = Number(quote) || 4.7;
                             setQuote((base * p.val).toFixed(4));
@@ -328,7 +324,7 @@ export default function GambleSUIPage() {
                         </Button>
                       ))}
                     </div>
-                    <p className="text-xs text-zinc-400">小提示：這些按鈕會以目前輸入的報價為基準做百分比調整。</p>
+                    <p className="text-xs text-zinc-400">Tip: These buttons adjust based on your current quote as a percentage.</p>
                   </TabsContent>
                 </Tabs>
               </CardContent>
@@ -337,13 +333,13 @@ export default function GambleSUIPage() {
             {/* 額外資訊卡：規則/風險提示 */}
             <Card className="bg-zinc-900/60 border-zinc-800">
               <CardHeader>
-                <CardTitle className="text-sm">規則與風險</CardTitle>
-                <CardDescription className="text-zinc-400">請留意：區塊鏈交易不可逆，合約規則以鏈上程式碼為準。</CardDescription>
+                <CardTitle className="text-sm text-zinc-400">Rules & Risks</CardTitle>
+                <CardDescription className="">Note: Blockchain transactions are irreversible. Contract rules are determined by on-chain code.</CardDescription>
               </CardHeader>
               <CardContent className="text-xs text-zinc-400 space-y-2">
-                <p>• 報價精度與結算方式以合約實作為準（例如最接近實際價格者獲獎）。</p>
-                <p>• 你需要擁有足夠的 SUI 餘額支付票券費用與 Gas。</p>
-                <p>• 本頁面目前使用假資料；接上鏈後請以鏈上狀態為主。</p>
+                <p>• Quote precision and settlement are determined by the contract implementation (e.g., closest to actual price wins).</p>
+                <p>• You must have sufficient SUI balance to cover ticket cost and gas fees.</p>
+                <p>• This page currently uses demo data; once connected, always rely on on-chain state.</p>
               </CardContent>
             </Card>
           </section>
