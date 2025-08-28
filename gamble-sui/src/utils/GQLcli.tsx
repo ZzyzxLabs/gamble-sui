@@ -7,7 +7,7 @@ interface GraphQLFetcherParams {
 
 // This function can be defined once in a utility file and imported where needed.
 export async function graphQLFetcher({ query, variables }: GraphQLFetcherParams) {
-  const response = await fetch(getFullnodeUrl('testnet'), {
+  const response = await fetch("https://sui-testnet.mystenlabs.com/graphql", {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
