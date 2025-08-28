@@ -13,7 +13,7 @@ export default function Home() {
         onAdminClick={() => setIsAdminView(true)} 
         onTicketClick={() => setIsAdminView(false)} 
       />
-    <div className="flex min-h-screen flex-col items-center justify-center p-24">
+    <div className="flex min-h-screen flex-col items-center justify-center">
       {isAdminView ? (
         <Admin />
       ) : (
