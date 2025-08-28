@@ -9,7 +9,7 @@ interface NavBarProps {
 
 function NavBar({ onTicketClick, onAdminClick }: NavBarProps) {
     return (
-        <nav className="bg-gray-900 text-white px-8 py-4 flex justify-between items-center w-full sticky top-0">
+        <nav className="bg-gray-900 text-white z-10 px-8 py-4 flex justify-between items-center w-full sticky top-0">
             <div className="flex gap-8">
                 <a
                     onClick={onTicketClick}
