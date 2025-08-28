@@ -126,7 +126,7 @@ export default function GambleSUIPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           {/* 左半：票券總覽 */}
           <section className="space-y-4">
-            <Card className="bg-zinc-900/60 relative -z-0 backdrop-blur border-zinc-800 h-197 overflow-y-auto">
+            <Card className="bg-zinc-900/60 relative -z-0 backdrop-blur border-zinc-800 h-199 overflow-y-auto">
               <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2 text-white">
@@ -300,7 +300,7 @@ export default function GambleSUIPage() {
                     </div>
                   </TabsContent>
 
-                  {/* 快速預設報價（僅作示範） */}
+                  {/* 快速預設報價 */}
                   <TabsContent value="quick" className="space-y-3">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {[
