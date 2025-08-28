@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { graphQLFetcher } from '../utils/GQLcli';
 
@@ -27,6 +27,7 @@ interface PoolListProps {
   showControls?: boolean;
   className?: string;
   useMockData?: boolean;
+  poolsData?: Pool[];
 }
 
 // Mock data for pools (when useMockData is true)
@@ -71,10 +72,20 @@ const PoolCard = ({
   showControls?: boolean;
 }) => {
   const [isStopped, setIsStopped] = useState(false);
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
   
   const formatEndTime = (timestamp?: number) => {
     if (!timestamp) return 'N/A';
+    if (!isClient) {
+      // During SSR, return a consistent placeholder
+      return 'Loading...';
+    }
     const date = new Date(timestamp);
+    // Only format on client side to avoid hydration mismatches
     return date.toLocaleString();
   };
 
@@ -163,15 +174,16 @@ export default function PoolList({
   mode = 'default',
   showControls = false,
   className = '',
-  useMockData = false
+  useMockData = false,
+  poolsData = []
 }: PoolListProps) {
   const { data, isLoading, error } = useQuery<PoolsResponse>({
     queryKey: ['pools'],
     queryFn: () => graphQLFetcher({ query: POOLS_QUERY }),
-    enabled: !useMockData, // Only fetch when not using mock data
+    enabled: !useMockData && poolsData.length === 0, // Only fetch when not using mock data or poolsData
   });
 
-  if (!useMockData && isLoading) {
+  if (!useMockData && poolsData.length === 0 && isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="text-lg">Loading pools...</div>
@@ -179,7 +191,7 @@ export default function PoolList({
     );
   }
 
-  if (!useMockData && error) {
+  if (!useMockData && poolsData.length === 0 && error) {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="text-red-500">
@@ -189,7 +201,15 @@ export default function PoolList({
     );
   }
 
-  const pools = useMockData ? mockPools : (data?.objects?.nodes || []);
+  // Priority: poolsData > mock data > fetched data
+  let pools: Pool[];
+  if (poolsData.length > 0) {
+    pools = poolsData;
+  } else if (useMockData) {
+    pools = mockPools;
+  } else {
+    pools = data?.objects?.nodes || [];
+  }
 
   if (mode === 'admin') {
     return (
@@ -234,7 +254,7 @@ export default function PoolList({
         </div>
       )}
       
-      {!useMockData && data?.objects?.pageInfo?.hasNextPage && (
+      {!useMockData && poolsData.length === 0 && data?.objects?.pageInfo?.hasNextPage && (
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-500">
             More pools available (pagination not implemented)
