@@ -29,7 +29,8 @@ module suipredict::suipredict {
         fixed_price: u64,
         canRedeem: bool,
         indices: vector<u64>,
-        end_time: u64
+        end_time: u64,
+        oracleSetting: OracleSetting
     }
     
     // declare ticket
@@ -69,10 +70,10 @@ module suipredict::suipredict {
         ctx: &mut TxContext
     ) { 
         // Create oracle setting
-        create_oracle_setting(admin_cap, oracleID, ctx);
+        let oracleSetting = create_oracle_setting(admin_cap, oracleID, ctx);
         
         // Create prize pool
-        create_pool(admin_cap, p_price, end_time, ctx);
+        create_pool(admin_cap, p_price, end_time, oracleSetting, ctx);
     }
 
     // Administrator sets oracle
@@ -80,12 +81,12 @@ module suipredict::suipredict {
         admin_cap: &AdminCap,
         oracleID: u32,
         ctx: &mut TxContext
-    ) {
+    ): OracleSetting {
         let oracle_setting = OracleSetting {
             id: object::new(ctx),
             oracleID: oracleID
         };
-        transfer::share_object(oracle_setting);
+        oracle_setting
     }
 
     // Administrator creates a new prize pool
@@ -93,6 +94,7 @@ module suipredict::suipredict {
         admin: &AdminCap,
         p_price: u64,
         clock: &Clock,
+        oracleSetting: OracleSetting,
         ctx: &mut TxContext
     ) {
         let pool = Pool {
@@ -103,7 +105,8 @@ module suipredict::suipredict {
             fixed_price: 0,
             canRedeem: false,
             indices: vector::empty<u64>(),
-            end_time: clock::timestamp_ms(clock) + 100000  //259_200_000
+            end_time: clock::timestamp_ms(clock) + 100000,  //259_200_000
+            oracleSetting: oracleSetting
         };
         transfer::share_object(pool);
     }
