@@ -29,6 +29,35 @@ interface TicketItem {
   placedAt: number; // ms timestamp
 }
 
+// ---- Pools (mock) ----
+interface PoolItem {
+  id: string;
+  name: string;      // e.g. "Round 129"
+  expiresAt: number; // ms timestamp
+  potSui: number;    // prize pool in SUI
+}
+
+function generateDemoPools(): PoolItem[] {
+  const now = Date.now();
+  return [
+    { id: "P-129", name: "Round 129", expiresAt: now + 1000 * 60 * 45, potSui: 32.5 },
+    { id: "P-130", name: "Round 130", expiresAt: now + 1000 * 60 * 90, potSui: 12.0 },
+    { id: "P-131", name: "Round 131", expiresAt: now + 1000 * 60 * 150, potSui: 4.2 },
+  ];
+}
+
+// time-left display helper
+function formatDuration(ms: number) {
+  if (ms <= 0) return "Expired";
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}h ${m}m ${sec}s`;
+  if (m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+
 function generateDemoTickets(): TicketItem[] {
   const now = Date.now();
   return [
@@ -70,6 +99,23 @@ export default function GambleSUIPage() {
   const [quantity, setQuantity] = useState<string>("1"); // 購買張數
   const [ticketPrice, setTicketPrice] = useState<string>("1"); // 每張票花費 SUI
   const [fastMode, setFastMode] = useState<boolean>(true); // 快速下單模式（跳過部分二次確認）
+
+  // pools state
+  const [pools, setPools] = useState<PoolItem[]>(generateDemoPools());
+  const [selectedPoolId, setSelectedPoolId] = useState<string | null>(null);
+
+  // recompute selected pool
+  const selectedPool = useMemo(
+    () => pools.find((p) => p.id === selectedPoolId) || null,
+    [pools, selectedPoolId]
+  );
+
+  // tick every second so "time left" updates
+  const [, forceTick] = useState(0);
+  React.useEffect(() => {
+    const t = setInterval(() => forceTick((x) => x + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const qty = Number(quantity) || 0;
   const pricePer = Number(ticketPrice) || 0;
@@ -192,154 +238,192 @@ export default function GambleSUIPage() {
           </section>
 
           {/* 右半：購買區域 */}
+          {/* Right: Pools & Buy */}
           <section className="space-y-4">
             <Card className="bg-zinc-900/60 backdrop-blur border-zinc-800">
               <CardHeader>
-                <CardTitle className="text-lg text-white">Buy Ticket</CardTitle>
-                <CardDescription className="text-zinc-400">Enter your price for the chosen round. At settlement, the closest player wins.</CardDescription>
+                <CardTitle className="text-lg text-white">Available Pools</CardTitle>
+                <CardDescription className="text-zinc-400">
+                  Pick a pool to enter. Each pool has a deadline and prize pot.
+                </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-5 text-zinc-300">
-                <Tabs defaultValue="manual" className="w-full"    >
-                  <TabsList className="bg-zinc-900 border border-zinc-800">
-                    <TabsTrigger value="manual" className="text-zinc-400 data-[state=active]:text-black">Manual Quote</TabsTrigger>
-                    <TabsTrigger value="quick" className="text-zinc-400 data-[state=active]:text-black">Quick Presets</TabsTrigger>
-                  </TabsList>
 
-                  {/* 手動報價 */}
-                  <TabsContent value="manual" className="space-y-4">
-                    <div className="grid gap-3">
-                      <Label>Select Round</Label>
-                      <Select value={round} onValueChange={setRound}>
-                        <SelectTrigger className="bg-zinc-900 border-zinc-700 text-zinc-100">
-                          <SelectValue placeholder="Current Round" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-zinc-900 border-zinc-700 text-zinc-100">
-                          <SelectItem value="current">Current Round</SelectItem>
-                          <SelectItem value="next">Next Round (+30m)</SelectItem>
-                        </SelectContent>
-                      </Select>
+              <CardContent className="space-y-4 text-zinc-300">
+                {/* Pools table */}
+                <div className="rounded-md border border-zinc-800 overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="text-zinc-300">Pool</TableHead>
+                        <TableHead className="text-zinc-300">Expires</TableHead>
+                        <TableHead className="text-zinc-300">Time Left</TableHead>
+                        <TableHead className="text-zinc-300">Pot (SUI)</TableHead>
+                        <TableHead className="text-right text-zinc-300">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pools.map((p) => {
+                        const timeLeft = p.expiresAt - Date.now();
+                        return (
+                          <TableRow key={p.id} className="hover:bg-zinc-900/60">
+                            <TableCell className="font-medium">{p.name}</TableCell>
+                            <TableCell>{new Date(p.expiresAt).toLocaleString()}</TableCell>
+                            <TableCell>{formatDuration(timeLeft)}</TableCell>
+                            <TableCell>{p.potSui.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                size="sm"
+                                className="bg-indigo-600 hover:bg-indigo-500 text-white"
+                                onClick={() => setSelectedPoolId(p.id)}
+                              >
+                                Select
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Selected summary + Buy dialog */}
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm">
+                      <div className="text-zinc-400">Selected Pool</div>
+                      <div className="mt-1 font-medium">
+                        {selectedPool ? selectedPool.name : "None"}
+                      </div>
+                      {selectedPool && (
+                        <div className="mt-1 text-xs text-zinc-400">
+                          Expires: {new Date(selectedPool.expiresAt).toLocaleString()} • Time Left:{" "}
+                          {formatDuration(selectedPool.expiresAt - Date.now())} • Pot:{" "}
+                          {selectedPool.potSui.toLocaleString(undefined, { maximumFractionDigits: 2 })} SUI
+                        </div>
+                      )}
                     </div>
 
-                    <div className="grid gap-3">
-                      <Label>Your Quote (SUI/USD)</Label>
-                      <Input
-                        value={quote}
-                        onChange={(e) => setQuote(e.target.value)}
-                        placeholder="Enter your price"
-                        className="bg-zinc-900 border-zinc-700 text-zinc-100 placeholder:text-zinc-500"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="grid gap-3">
-                        <Label>Quantity</Label>
-                        <Input
-                          inputMode="numeric"
-                          value={quantity}
-                          onChange={(e) => setQuantity(e.target.value)}
-                          placeholder="1"
-                          className="bg-zinc-900 border-zinc-700 text-zinc-100"
-                        />
-                      </div>
-                      <div className="grid gap-3">
-                        <Label>Price per Ticket (SUI)</Label>
-                        <Input
-                          inputMode="decimal"
-                          value={ticketPrice}
-                          onChange={(e) => setTicketPrice(e.target.value)}
-                          placeholder="1"
-                          className="bg-zinc-900 border-zinc-700 text-zinc-100"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="rounded-md border border-zinc-800 p-3 bg-zinc-950/50">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-zinc-400">Estimated Cost</span>
-                        <span className="font-medium">{formatSui(cost)}</span>
-                      </div>
-                      <Separator className="my-3 bg-zinc-800" />
-                      <div className="flex items-center justify-between text-xs text-zinc-400">
-                        <span>Quote</span>
-                        <span>{formatPrice(Number(quote) || 0)}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-xs text-zinc-400">
-                        <span>Round</span>
-                        <span>{round === "current" ? "Current Round" : "Next Round"}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-sm text-zinc-400">
-                        <Switch checked={fastMode} onCheckedChange={setFastMode} id="fast" className="data-[state=checked]:bg-emerald-600" />
-                        <Label htmlFor="fast" className="cursor-pointer">Fast Mode</Label>
-                      </div>
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button disabled={cost <= 0} className="bg-indigo-600 hover:bg-indigo-500 text-white">Place Order</Button>
-                        </DialogTrigger>
-                        <DialogContent className="bg-zinc-900 border-zinc-800 text-zinc-100">
-                          <DialogHeader>
-                            <DialogTitle>Confirm Order</DialogTitle>
-                            <DialogDescription className="text-zinc-400">Please confirm your quote and cost. Submitting will call the contract to mint your ticket.</DialogDescription>
-                          </DialogHeader>
-                          <div className="space-y-2 text-sm">
-                            <div className="flex items-center justify-between"><span>Round</span><span className="font-medium">{round === "current" ? "Current Round" : "Next Round"}</span></div>
-                            <div className="flex items-center justify-between"><span>Quote</span><span className="font-medium">{formatPrice(Number(quote) || 0)}</span></div>
-                            <div className="flex items-center justify-between"><span>Quantity</span><span className="font-medium">{qty}</span></div>
-                            <div className="flex items-center justify-between"><span>Price per Ticket</span><span className="font-medium">{formatSui(pricePer)}</span></div>
-                            <Separator className="my-2 bg-zinc-800" />
-                            <div className="flex items-center justify-between text-base"><span>Total</span><span className="font-semibold">{formatSui(cost)}</span></div>
-                          </div>
-                          <DialogFooter>
-                            <Button variant="secondary" className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300">Cancel</Button>
-                            <Button onClick={mockPlaceOrder} className="bg-emerald-600 hover:bg-emerald-500 text-white">Confirm</Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
-                    </div>
-                  </TabsContent>
-
-                  {/* 快速預設報價 */}
-                  <TabsContent value="quick" className="space-y-3">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {[
-                        { label: "+0.5%", val: 1.005 },
-                        { label: "+1%", val: 1.01 },
-                        { label: "+2%", val: 1.02 },
-                        { label: "-0.5%", val: 0.995 },
-                        { label: "-1%", val: 0.99 },
-                        { label: "-2%", val: 0.98 },
-                      ].map((p) => (
+                    <Dialog>
+                      <DialogTrigger asChild>
                         <Button
-                          key={p.label}
-                          variant="secondary"
-                          className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
-                          onClick={() => {
-                            const base = Number(quote) || 4.7;
-                            setQuote((base * p.val).toFixed(4));
-                          }}
+                          disabled={!selectedPool}
+                          className="bg-emerald-600 hover:bg-emerald-500 text-white"
                         >
-                          {p.label}
+                          {selectedPool ? "Buy Ticket" : "Select a Pool"}
                         </Button>
-                      ))}
-                    </div>
-                    <p className="text-xs text-zinc-400">Tip: These buttons adjust based on your current quote as a percentage.</p>
-                  </TabsContent>
-                </Tabs>
-              </CardContent>
-            </Card>
+                      </DialogTrigger>
 
-            {/* 額外資訊卡：規則/風險提示 */}
-            <Card className="bg-zinc-900/60 border-zinc-800">
-              <CardHeader>
-                <CardTitle className="text-sm text-zinc-400">Rules & Risks</CardTitle>
-                <CardDescription className="">Note: Blockchain transactions are irreversible. Contract rules are determined by on-chain code.</CardDescription>
-              </CardHeader>
-              <CardContent className="text-xs text-zinc-400 space-y-2">
-                <p>• Quote precision and settlement are determined by the contract implementation (e.g., closest to actual price wins).</p>
-                <p>• You must have sufficient SUI balance to cover ticket cost and gas fees.</p>
-                <p>• This page currently uses demo data; once connected, always rely on on-chain state.</p>
+                      <DialogContent className="bg-zinc-900 border-zinc-800 text-zinc-100">
+                        <DialogHeader>
+                          <DialogTitle>Buy Ticket</DialogTitle>
+                          <DialogDescription className="text-zinc-400">
+                            {selectedPool
+                              ? `You are entering ${selectedPool.name}. Please confirm your quote and cost.`
+                              : "Please select a pool first."}
+                          </DialogDescription>
+                        </DialogHeader>
+
+                        {/* Reuse your existing inputs (with 4-decimal validation) */}
+                        <div className="space-y-4">
+                          <div className="grid gap-3">
+                            <Label>Your Quote (SUI/USD)</Label>
+                            <Input
+                              value={quote}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const regex = /^\d*(\.\d{0,4})?$/;
+                                if (regex.test(val)) setQuote(val);
+                              }}
+                              onBlur={() => {
+                                if (quote) setQuote(Number(quote).toFixed(4));
+                              }}
+                              placeholder="e.g. 4.7000"
+                              className="bg-zinc-900 border-zinc-700 text-zinc-100 placeholder:text-zinc-500"
+                            />
+                            <p className="text-xs text-zinc-400">
+                              Tip: Please enter 4 decimal places. Actual precision is determined by the contract.
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="grid gap-3">
+                              <Label>Quantity</Label>
+                              <Input
+                                inputMode="numeric"
+                                value={quantity}
+                                onChange={(e) => setQuantity(e.target.value)}
+                                placeholder="1"
+                                className="bg-zinc-900 border-zinc-700 text-zinc-100"
+                              />
+                            </div>
+                            <div className="grid gap-3">
+                              <Label>Price per Ticket (SUI)</Label>
+                              <Input
+                                inputMode="decimal"
+                                value={ticketPrice}
+                                onChange={(e) => setTicketPrice(e.target.value)}
+                                placeholder="1"
+                                className="bg-zinc-900 border-zinc-700 text-zinc-100"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="rounded-md border border-zinc-800 p-3 bg-zinc-950/50">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-zinc-400">Estimated Cost</span>
+                              <span className="font-medium">{formatSui(cost)}</span>
+                            </div>
+                            <Separator className="my-3 bg-zinc-800" />
+                            <div className="flex items-center justify-between text-xs text-zinc-400">
+                              <span>Quote</span>
+                              <span>{formatPrice(Number(quote) || 0)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-zinc-400">
+                              <span>Pool</span>
+                              <span>{selectedPool ? selectedPool.name : "-"}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <DialogFooter>
+                          <Button variant="secondary" className="bg-zinc-800 hover:bg-zinc-700">
+                            Cancel
+                          </Button>
+                          <Button
+                            disabled={!selectedPool || cost <= 0}
+                            onClick={() => {
+                              // write a demo ticket that uses pool name as "round"
+                              const roundName = selectedPool ? selectedPool.name : "N/A";
+                              const newTicket: TicketItem = {
+                                id: `T-${Math.floor(Math.random() * 9000 + 1000)}`,
+                                round: roundName,
+                                quote: Number(quote) || 0,
+                                stake: Number(ticketPrice) || 0,
+                                status: "Active",
+                                placedAt: Date.now(),
+                              };
+                              setTickets((prev) => [newTicket, ...prev]);
+                            }}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white"
+                          >
+                            Confirm
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+
+                  {/* keep Fast Mode toggle if you still want it */}
+                  <div className="flex items-center gap-2 text-sm text-zinc-400 pt-2">
+                    <Switch
+                      checked={fastMode}
+                      onCheckedChange={setFastMode}
+                      id="fast"
+                      className="data-[state=checked]:bg-emerald-600"
+                    />
+                    <Label htmlFor="fast" className="cursor-pointer">Fast Mode</Label>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </section>
