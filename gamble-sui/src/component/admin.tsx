@@ -30,6 +30,7 @@ import {
   useSuiClient,
 } from "@mysten/dapp-kit";
 import { graphQLFetcher } from "@/utils/GQLcli";
+import { package_addr } from "@/utils/package";
 
 const Admin = () => {
   const client = useSuiClient();
@@ -65,7 +66,7 @@ const Admin = () => {
             {
   objects(
     filter: {
-      type: "0x70d3045213d0ff5858539b77932bdd6aea5e044b9fb9408f8e3085b3c8b52288::suipredict::Pool"
+      type: "${package_addr}::suipredict::Pool"
     }
   ) {
     edges {
@@ -192,7 +193,7 @@ const Admin = () => {
           query: `
             query {
               owner(address:"${acc.address}"){
-                objects(filter:{type:"0x70d3045213d0ff5858539b77932bdd6aea5e044b9fb9408f8e3085b3c8b52288::suipredict::AdminCap"}){
+                objects(filter:{type:"${package_addr}::suipredict::AdminCap"}){
                   nodes{
                     address
                   }
