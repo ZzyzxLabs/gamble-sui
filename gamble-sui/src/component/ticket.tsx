@@ -31,22 +31,45 @@ interface TicketItem {
 
 // ---- Pools (mock) ----
 interface PoolItem {
-  id: string;
-  name: string;      // e.g. "Round 129"
-  expiresAt: number; // ms timestamp
-  potSui: number;    // prize pool in SUI
+  id: string;          // e.g. "P-129"
+  name: string;        // e.g. "Round 129"
+  createdAt: number;   // start time (for progress bar)
+  expiresAt: number;   // deadline
+  potSui: number;      // current prize pot
+  ticketPrice: number; // price per ticket (SUI)
 }
 
 function generateDemoPools(): PoolItem[] {
   const now = Date.now();
   return [
-    { id: "P-129", name: "Round 129", expiresAt: now + 1000 * 60 * 45, potSui: 32.5 },
-    { id: "P-130", name: "Round 130", expiresAt: now + 1000 * 60 * 90, potSui: 12.0 },
-    { id: "P-131", name: "Round 131", expiresAt: now + 1000 * 60 * 150, potSui: 4.2 },
+    {
+      id: "P-129",
+      name: "Round 129",
+      createdAt: now - 1000 * 60 * 30,            // 開了 30 分鐘
+      expiresAt: now + 1000 * 60 * 45,            // 再 45 分鐘到期
+      potSui: 32.5,
+      ticketPrice: 1,
+    },
+    {
+      id: "P-130",
+      name: "Round 130",
+      createdAt: now - 1000 * 60 * 10,
+      expiresAt: now + 1000 * 60 * 90,
+      potSui: 12.0,
+      ticketPrice: 1,
+    },
+    {
+      id: "P-131",
+      name: "Round 131",
+      createdAt: now - 1000 * 60 * 5,
+      expiresAt: now + 1000 * 60 * 150,
+      potSui: 4.2,
+      ticketPrice: 1,
+    },
   ];
 }
 
-// time-left display helper
+// format time left like "1h 12m 03s"
 function formatDuration(ms: number) {
   if (ms <= 0) return "Expired";
   const s = Math.floor(ms / 1000);
@@ -57,6 +80,7 @@ function formatDuration(ms: number) {
   if (m > 0) return `${m}m ${sec}s`;
   return `${sec}s`;
 }
+
 
 function generateDemoTickets(): TicketItem[] {
   const now = Date.now();
@@ -161,18 +185,13 @@ export default function GambleSUIPage() {
             </h1>
             <p className="text-sm text-zinc-400">Just a little Casino</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" className="bg-zinc-800 text-zinc-100 hover:bg-zinc-700">
-              <History className="mr-2 h-4 w-4" /> History
-            </Button>
-          </div>
         </div>
 
         {/* 兩欄布局 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           {/* 左半：票券總覽 */}
           <section className="space-y-4">
-            <Card className="bg-zinc-900/60 relative -z-0 backdrop-blur border-zinc-800 h-199 overflow-y-auto">
+            <Card className="bg-zinc-900/60 relative -z-0 backdrop-blur border-zinc-800 h-200 overflow-y-auto">
               <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <CardTitle className="flex items-center gap-2 text-white">
@@ -238,113 +257,92 @@ export default function GambleSUIPage() {
           </section>
 
           {/* 右半：購買區域 */}
-          {/* Right: Pools & Buy */}
+          {/* Right: Selected Pool (top) + Pools list (scrollable, bottom) */}
           <section className="space-y-4">
+            {/* Selected Pool card */}
             <Card className="bg-zinc-900/60 backdrop-blur border-zinc-800">
               <CardHeader>
-                <CardTitle className="text-lg text-white">Available Pools</CardTitle>
+                <CardTitle className="text-lg text-white">Selected Pool</CardTitle>
                 <CardDescription className="text-zinc-400">
-                  Pick a pool to enter. Each pool has a deadline and prize pot.
+                  Choose a pool below. Details of your selection appear here.
                 </CardDescription>
               </CardHeader>
-
               <CardContent className="space-y-4 text-zinc-300">
-                {/* Pools table */}
-                <div className="rounded-md border border-zinc-800 overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="hover:bg-transparent">
-                        <TableHead className="text-zinc-300">Pool</TableHead>
-                        <TableHead className="text-zinc-300">Expires</TableHead>
-                        <TableHead className="text-zinc-300">Time Left</TableHead>
-                        <TableHead className="text-zinc-300">Pot (SUI)</TableHead>
-                        <TableHead className="text-right text-zinc-300">Action</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {pools.map((p) => {
-                        const timeLeft = p.expiresAt - Date.now();
-                        return (
-                          <TableRow key={p.id} className="hover:bg-zinc-900/60">
-                            <TableCell className="font-medium">{p.name}</TableCell>
-                            <TableCell>{new Date(p.expiresAt).toLocaleString()}</TableCell>
-                            <TableCell>{formatDuration(timeLeft)}</TableCell>
-                            <TableCell>{p.potSui.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                size="sm"
-                                className="bg-indigo-600 hover:bg-indigo-500 text-white"
-                                onClick={() => setSelectedPoolId(p.id)}
-                              >
-                                Select
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-
-                {/* Selected summary + Buy dialog */}
-                <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm">
-                      <div className="text-zinc-400">Selected Pool</div>
-                      <div className="mt-1 font-medium">
-                        {selectedPool ? selectedPool.name : "None"}
+                {!selectedPool ? (
+                  <div className="text-sm text-zinc-500">No pool selected.</div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+                        <div className="text-xs text-zinc-400">Pool</div>
+                        <div className="mt-1 text-base font-medium">{selectedPool.name}</div>
+                        <div className="mt-1 text-xs text-zinc-500">ID: {selectedPool.id}</div>
                       </div>
-                      {selectedPool && (
-                        <div className="mt-1 text-xs text-zinc-400">
-                          Expires: {new Date(selectedPool.expiresAt).toLocaleString()} • Time Left:{" "}
-                          {formatDuration(selectedPool.expiresAt - Date.now())} • Pot:{" "}
+                      <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+                        <div className="text-xs text-zinc-400">Pot (SUI)</div>
+                        <div className="mt-1 text-base font-medium">
                           {selectedPool.potSui.toLocaleString(undefined, { maximumFractionDigits: 2 })} SUI
                         </div>
-                      )}
+                        <div className="mt-1 text-xs text-zinc-500">Ticket Price: {selectedPool.ticketPrice} SUI</div>
+                      </div>
+                      <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+                        <div className="text-xs text-zinc-400">Expires</div>
+                        <div className="mt-1 text-base font-medium">{new Date(selectedPool.expiresAt).toLocaleString()}</div>
+                        <div className="mt-1 text-xs text-zinc-500">
+                          Time Left: {formatDuration(selectedPool.expiresAt - Date.now())}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+                        <div className="text-xs text-zinc-400">Opened</div>
+                        <div className="mt-1 text-base font-medium">{new Date(selectedPool.createdAt).toLocaleString()}</div>
+                        {/* progress bar (time elapsed / total window) */}
+                        <div className="mt-2 h-2 w-full rounded bg-zinc-800 overflow-hidden">
+                          {(() => {
+                            const total = selectedPool.expiresAt - selectedPool.createdAt;
+                            const done = Math.min(Math.max(Date.now() - selectedPool.createdAt, 0), total);
+                            const pct = total > 0 ? (done / total) * 100 : 100;
+                            return <div className="h-full bg-indigo-600" style={{ width: `${pct}%` }} />;
+                          })()}
+                        </div>
+                        <div className="mt-1 text-[10px] text-zinc-500">Time progress</div>
+                      </div>
                     </div>
 
                     <Dialog>
                       <DialogTrigger asChild>
                         <Button
-                          disabled={!selectedPool}
-                          className="bg-emerald-600 hover:bg-emerald-500 text-white"
+                          size="lg"
+                          className="relative w-full sm:w-auto inline-flex items-center gap-2 rounded-lg
+                                      bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold
+                                      shadow-lg shadow-emerald-500/30 hover:shadow-emerald-400/40
+                                      ring-2 ring-emerald-400/40 hover:ring-emerald-300/50
+                                      hover:from-emerald-400 hover:to-teal-400
+                                      transition active:scale-[0.98] focus-visible:outline-none
+                                      focus-visible:ring-2 focus-visible:ring-emerald-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
                         >
-                          {selectedPool ? "Buy Ticket" : "Select a Pool"}
+                          <Wallet className="h-4 w-4" />
+                          Buy Ticket
                         </Button>
                       </DialogTrigger>
-
                       <DialogContent className="bg-zinc-900 border-zinc-800 text-zinc-100">
                         <DialogHeader>
                           <DialogTitle>Buy Ticket</DialogTitle>
                           <DialogDescription className="text-zinc-400">
-                            {selectedPool
-                              ? `You are entering ${selectedPool.name}. Please confirm your quote and cost.`
-                              : "Please select a pool first."}
+                            You are entering {selectedPool.name}. Please confirm your quote and cost.
                           </DialogDescription>
                         </DialogHeader>
 
-                        {/* Reuse your existing inputs (with 4-decimal validation) */}
+                        {/* Reuse your existing inputs (you可自行保留/加驗證) */}
                         <div className="space-y-4">
                           <div className="grid gap-3">
                             <Label>Your Quote (SUI/USD)</Label>
                             <Input
                               value={quote}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                const regex = /^\d*(\.\d{0,4})?$/;
-                                if (regex.test(val)) setQuote(val);
-                              }}
-                              onBlur={() => {
-                                if (quote) setQuote(Number(quote).toFixed(4));
-                              }}
-                              placeholder="e.g. 4.7000"
+                              onChange={(e) => setQuote(e.target.value)}
+                              placeholder="Enter your predicted price"
                               className="bg-zinc-900 border-zinc-700 text-zinc-100 placeholder:text-zinc-500"
                             />
-                            <p className="text-xs text-zinc-400">
-                              Tip: Please enter 4 decimal places. Actual precision is determined by the contract.
-                            </p>
                           </div>
-
                           <div className="grid grid-cols-2 gap-3">
                             <div className="grid gap-3">
                               <Label>Quantity</Label>
@@ -362,7 +360,7 @@ export default function GambleSUIPage() {
                                 inputMode="decimal"
                                 value={ticketPrice}
                                 onChange={(e) => setTicketPrice(e.target.value)}
-                                placeholder="1"
+                                placeholder={String(selectedPool.ticketPrice)}
                                 className="bg-zinc-900 border-zinc-700 text-zinc-100"
                               />
                             </div>
@@ -380,23 +378,20 @@ export default function GambleSUIPage() {
                             </div>
                             <div className="flex items-center justify-between text-xs text-zinc-400">
                               <span>Pool</span>
-                              <span>{selectedPool ? selectedPool.name : "-"}</span>
+                              <span>{selectedPool.name}</span>
                             </div>
                           </div>
                         </div>
 
                         <DialogFooter>
-                          <Button variant="secondary" className="bg-zinc-800 hover:bg-zinc-700">
-                            Cancel
-                          </Button>
+                          <Button variant="secondary" className="bg-zinc-800 hover:bg-zinc-700">Cancel</Button>
                           <Button
-                            disabled={!selectedPool || cost <= 0}
+                            disabled={cost <= 0}
                             onClick={() => {
-                              // write a demo ticket that uses pool name as "round"
-                              const roundName = selectedPool ? selectedPool.name : "N/A";
+                              // 將 pool 名稱寫進你的 demo tickets 的 round 欄位
                               const newTicket: TicketItem = {
                                 id: `T-${Math.floor(Math.random() * 9000 + 1000)}`,
-                                round: roundName,
+                                round: selectedPool.name,
                                 quote: Number(quote) || 0,
                                 stake: Number(ticketPrice) || 0,
                                 status: "Active",
@@ -411,22 +406,89 @@ export default function GambleSUIPage() {
                         </DialogFooter>
                       </DialogContent>
                     </Dialog>
-                  </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
 
-                  {/* keep Fast Mode toggle if you still want it */}
-                  <div className="flex items-center gap-2 text-sm text-zinc-400 pt-2">
-                    <Switch
-                      checked={fastMode}
-                      onCheckedChange={setFastMode}
-                      id="fast"
-                      className="data-[state=checked]:bg-emerald-600"
-                    />
-                    <Label htmlFor="fast" className="cursor-pointer">Fast Mode</Label>
-                  </div>
+            {/* Pools list (scrollable) */}
+            <Card className="bg-zinc-900/60 backdrop-blur border-zinc-800 h-99 overflow-y-auto">
+              <CardHeader>
+                <CardTitle className="text-lg text-white">Available Pools</CardTitle>
+                <CardDescription className="text-zinc-400">
+                  Select a pool to view details and buy.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="text-zinc-300">
+                <div className="rounded-md border border-zinc-800 overflow-hidden">
+                  <Table>
+                    <TableHeader className="sticky top-0 bg-zinc-900/80 backdrop-blur">
+                      <TableRow className="hover:bg-transparent">
+                        <TableHead className="text-zinc-300">Pool</TableHead>
+                        <TableHead className="text-zinc-300">Expires</TableHead>
+                        <TableHead className="text-zinc-300">Time Left</TableHead>
+                        <TableHead className="text-zinc-300">Pot (SUI)</TableHead>
+                        <TableHead className="text-right text-zinc-300">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pools.map((p) => {
+                        const timeLeft = p.expiresAt - Date.now();
+                        const expired = timeLeft <= 0;
+                        const selected = selectedPoolId === p.id;
+
+                        return (
+                          <TableRow
+                            key={p.id}
+                            onClick={() => !expired && setSelectedPoolId(p.id)}
+                            className={[
+                              "transition-colors cursor-pointer",
+                              expired ? "opacity-50" : "hover:bg-zinc-900/60",
+                              // ★ 被選中：整列換色、左側加強邊、外圈 ring
+                              selected && "bg-indigo-950/40 border-l-2 border-indigo-500 ring-1 ring-indigo-600/30"
+                            ].filter(Boolean).join(" ")}
+                          >
+                            <TableCell className={selected ? "font-semibold text-white" : "font-medium"}>{p.name}</TableCell>
+                            <TableCell className={selected ? "text-zinc-200" : undefined}>
+                              {new Date(p.expiresAt).toLocaleString()}
+                            </TableCell>
+                            <TableCell className={selected ? "text-zinc-200" : undefined}>
+                              {formatDuration(timeLeft)}
+                            </TableCell>
+                            <TableCell className={selected ? "text-zinc-100" : undefined}>
+                              {p.potSui.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                size={selected ? "default" : "sm"} // ★ 被選中：變大顆
+                                disabled={expired}
+                                className={[
+                                  "text-white transition-all",
+                                  expired && "disabled:opacity-50 disabled:cursor-not-allowed",
+                                  // ★ 被選中：顏色、陰影、微放大
+                                  selected
+                                    ? "bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/20 scale-[1.03]"
+                                    : "bg-indigo-600 hover:bg-indigo-500"
+                                ].filter(Boolean).join(" ")}
+                                onClick={(e) => {
+                                  e.stopPropagation();               // 避免觸發 row onClick
+                                  if (!expired) setSelectedPoolId(p.id);
+                                }}
+                              >
+                                {expired ? "Expired" : selected ? "Selected" : "Select"}
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+
+                  </Table>
                 </div>
               </CardContent>
             </Card>
           </section>
+
         </div>
       </main>
     </div>
