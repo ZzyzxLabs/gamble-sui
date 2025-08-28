@@ -3,7 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { graphQLFetcher } from '../utils/GQLcli';
-
+import { useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
+import { fixed_price } from '@/utils/tx/fixed_price';
+import { package_addr } from '@/utils/package';
 interface Pool {
   address: string;
   creator?: string;
@@ -73,6 +75,18 @@ const PoolCard = ({
 }) => {
   const [isStopped, setIsStopped] = useState(false);
   const [isClient, setIsClient] = useState(false);
+  const client = useSuiClient();
+  const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction({
+    execute: async ({ bytes, signature }) =>
+      await client.executeTransactionBlock({
+        transactionBlock: bytes,
+        signature,
+        options: {
+          showRawEffects: true,
+          showObjectChanges: true,
+        },
+      }),
+  });
 
   useEffect(() => {
     setIsClient(true);
@@ -88,10 +102,19 @@ const PoolCard = ({
     // Only format on client side to avoid hydration mismatches
     return date.toLocaleString();
   };
-
-  const handleStopPool = () => {
-    setIsStopped(true);
-    console.log(`Stopping pool: ${pool.address}`);
+  
+  async function handleStopPool() {
+    try {
+      // Create the transaction with appropriate parameters
+      const transaction = fixed_price(pool.address, null); // Adjust parameters as needed
+      signAndExecuteTransaction({
+        transaction: transaction
+      });
+      setIsStopped(true);
+      console.log(`Stopping pool: ${pool.address}`);
+    } catch (error) {
+      console.error('Error stopping pool:', error);
+    }
   };
 
   return (
@@ -158,7 +181,7 @@ const PoolCard = ({
 
 const POOLS_QUERY = `
   query {
-    objects(filter: {type: "0x70d3045213d0ff5858539b77932bdd6aea5e044b9fb9408f8e3085b3c8b52288::suipredict::pool"}) {
+    objects(filter: {type: "${package_addr}::suipredict::pool"}) {
       nodes {
         address
       }
