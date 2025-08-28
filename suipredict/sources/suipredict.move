@@ -138,10 +138,9 @@ module suipredict::suipredict {
     public fun fixed_price(
         oracleHolder: &OracleHolder,
         pool: &mut Pool,
-        setting: &OracleSetting,
         ctx: &mut TxContext
     ) {
-        let (price, decimal_u16, _, _) = get_price(oracleHolder, setting.oracleID);
+        let (price, decimal_u16, _, _) = get_price(oracleHolder, pool.oracleSetting.oracleID);
         pool.fixed_price = (price as u64);
     }
 
