@@ -248,6 +248,10 @@ export default function GambleSUIPage() {
 
   // 安全版 fetchCoin
   async function fetchCoin(): Promise<string[]> {
+    if (!acc?.address) {
+      setCoins([]);
+      return [];
+    }
     setCoinsLoading(true);
     setCoinsError(null);
     try {
@@ -255,7 +259,7 @@ export default function GambleSUIPage() {
         query: `
         {
           owner(
-            address: "0x5a91d93d9982009e759681a5fa47645ae1454f792c87112038446993148e2193"
+            address: "${acc.address}"
           ) {
             coins {
               nodes {
@@ -296,11 +300,13 @@ export default function GambleSUIPage() {
     
     let coin_result = await fetchCoin()
     console.log(selectedPoolId, coin_result, quote)
-
+    const price = Number(ticketPrice) * 1000000000
     const tx = buyTicket(
       selectedPoolId,
       coin_result,
-      Number(Number(quote) * 1000000000)
+      price,
+      Number(Number(quote) * 1000000000),
+      acc?.address
     )
     signAndExecuteTransaction(
       {
