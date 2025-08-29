@@ -159,7 +159,7 @@ const Admin = () => {
         acc[result.poolAddress] = result.creator;
         return acc;
       }, {} as Record<string, string>);
-
+      console.log("Creator Map:", creatorResults);
       // Extract pool addresses and create pool objects with real creators
       const extractedPools = poolResult?.objects?.edges?.map((edge: any, index: number) => ({
         address: edge.node.address,

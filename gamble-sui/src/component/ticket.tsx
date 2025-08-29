@@ -177,19 +177,21 @@ export default function GambleSUIPage() {
           const addr: string | undefined = node.address;
           const contents = node?.asMoveObject?.contents;
           const rawData: any = contents?.data ?? {};
-          const dataFields: any = rawData?.fields ?? rawData ?? {};
-          console.log("Raw Pool Data", addr, rawData, dataFields);
-          if (!addr || !dataFields) return null;
-          const priceU64 = toNum(dataFields.price ?? dataFields?.fields?.price);
-          const endTimeObj = dataFields[7]
-          console.log("Pool", addr, { priceU64, endTimeObj });
+          const dataFieldMap = (Array.isArray(rawData.Struct) ? rawData.Struct : Object.values(rawData.Struct))
+            .reduce((acc, field: any) => {
+              acc[field.name] = field.value;
+              return acc;
+            }, {} as Record<string, any>);
+          const endTime = dataFieldMap["end_time"]?.Number;
+          if (!addr || !dataFieldMap) return null;
+          const priceU64 = toNum(dataFieldMap.price ?? dataFieldMap?.fields?.price);
           // Balance<SUI> can be nested; try common shapes
           let balanceMist = 0;
-          const bal = dataFields.balance ?? dataFields?.fields?.balance;
+          const bal = dataFieldMap.balance ?? dataFieldMap?.fields?.balance;
           if (bal) {
             balanceMist = toNum(bal);
           }
-
+          console.log(rawData, rawData.Struct ,dataFieldMap)
           const ticketPrice = toSui(priceU64);
           const potSui = toSui(balanceMist);
           const expiresAt = Number(endTime) || 0;
