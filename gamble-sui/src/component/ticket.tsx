@@ -138,6 +138,10 @@ export default function GambleSUIPage() {
   const [poolsLoading, setPoolsLoading] = useState<boolean>(false);
   const [poolsError, setPoolsError] = useState<string | null>(null);
 
+  const [coins, setCoins] = useState<string[]>([]);
+  const [coinsLoading, setCoinsLoading] = useState(false);
+  const [coinsError, setCoinsError] = useState<string | null>(null);
+
   const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction({
     execute: async ({ bytes, signature }) =>
       await client.executeTransactionBlock({
@@ -211,7 +215,6 @@ export default function GambleSUIPage() {
           if (bal) {
             balanceMist = toNum(bal);
           }
-          console.log(rawData, rawData.Struct, dataFieldMap)
           const ticketPrice = toSui(priceU64);
           const potSui = toSui(balanceMist);
           const expiresAt = Number(endTime) || 0;
@@ -231,7 +234,8 @@ export default function GambleSUIPage() {
       // Sort by soonest to expire first
       mapped.sort((a, b) => (a.expiresAt || 0) - (b.expiresAt || 0));
       setPools(mapped);
-
+      let coin_result = await fetchCoin()
+      console.log(coin_result)
       // Keep selection if still present; otherwise clear
       setSelectedPoolId((prev) => (mapped.some((p) => p.id === prev) ? prev : null));
     } catch (err: any) {
@@ -242,34 +246,112 @@ export default function GambleSUIPage() {
     }
   }, []);
 
-  async function fetchCoin(): any{
+  // 安全版 fetchCoin
+  async function fetchCoin(): Promise<string[]> {
+    setCoinsLoading(true);
+    setCoinsError(null);
     try {
       const data: any = await graphQLFetcher({
         query: `
-      {
-        owner(
-          address: "0x5a91d93d9982009e759681a5fa47645ae1454f792c87112038446993148e2193"
-        ){
-          coins{
-            nodes{
-              address
+        {
+          owner(
+            address: "0x5a91d93d9982009e759681a5fa47645ae1454f792c87112038446993148e2193"
+          ) {
+            coins {
+              nodes {
+                address
+              }
             }
           }
         }
-      }
-    `
-      })
-      return data;
+      `,
+      });
+
+      // 防呆展開
+      const nodes: Array<{ address?: string }> =
+        data?.owner?.coins?.nodes ?? [];
+
+      const list = nodes
+        .map((n) => n?.address)
+        .filter((x): x is string => typeof x === "string");
+
+      setCoins(list);
+      return list;
+    } catch (err: any) {
+      console.error("fetchCoin error:", err);
+      setCoinsError(err?.message || "Failed to fetch coins");
+      return [];
+    } finally {
+      setCoinsLoading(false);
     }
-    catch (err: any) {
-      console.error(err);
-    }
+  }
 
   // recompute selected pool when pools or selectedPoolId changes
   const selectedPool = useMemo(
     () => pools.find((p) => p.id === selectedPoolId) || null,
     [pools, selectedPoolId]
   );
+
+  const handleConfirm = async () => {
+    
+    let coin_result = await fetchCoin()
+    console.log(coin_result)
+
+    const tx = buyTicket(
+      selectedPoolId,
+      coin_result[0],
+      Number(quote * 1000000000)
+    )
+    tx.setSender(acc?.address)
+    signAndExecuteTransaction(
+      {
+        transaction: tx,
+      },
+      {
+        onSuccess: (result) => {
+          console.log("Transaction successful:", result);
+          console.log("Transaction digest:", result.digest);
+          console.log("Transaction effects:", result.effects);
+          console.log("Object changes:", result.objectChanges);
+          console.log("Raw effects:", result.rawEffects);
+          alert(
+            "Game started successfully! Transaction digest: " + result.digest
+          );
+        },
+        onError: (error) => {
+          console.error("Transaction failed:", error);
+          alert(
+            "Transaction failed: " +
+            (error instanceof Error ? error.message : String(error))
+          );
+        },
+      }
+    );
+    // 1) 寫入一張 demo ticket（沿用你原本的邏輯）
+    const newTicket: TicketItem = {
+      id: `T-${Math.floor(Math.random() * 9000 + 1000)}`,
+      round: selectedPool!.name,
+      quote: Number(quote) || 0,
+      stake: Number(ticketPrice) || 0,
+      status: "Active",
+      placedAt: Date.now(),
+    };
+    setTickets((prev) => [newTicket, ...prev]);
+
+    // 2) 同步更新所選池子的獎池金額
+    const delta = (Number(quantity) || 0) * (Number(ticketPrice) || 0);
+    setPools((prev) =>
+      prev.map((p) =>
+        p.id === selectedPool?.id ? { ...p, potSui: p.potSui + delta } : p
+      )
+    );
+
+    // 3) 顯示 +X SUI 動畫
+    setPotDelta(delta);
+    setFlashPot(true);
+    setTimeout(() => setFlashPot(false), 700);  // 0.7s 淡出
+    setTimeout(() => setPotDelta(null), 1200);  // 動畫結束後清除數值
+  };
 
   // tick every second so "time left" updates
   const [, forceTick] = useState(0);
@@ -547,35 +629,7 @@ export default function GambleSUIPage() {
                           <Button variant="secondary" className="bg-zinc-800 hover:bg-zinc-700">Cancel</Button>
                           <Button
                             disabled={cost <= 0}
-                            onClick={() => {
-                              if (!selectedPool) return;
-
-                              // 1) 寫入一張 demo ticket（沿用你原本的邏輯）
-                              const newTicket: TicketItem = {
-                                id: `T-${Math.floor(Math.random() * 9000 + 1000)}`,
-                                round: selectedPool.name,
-                                quote: Number(quote) || 0,
-                                stake: Number(ticketPrice) || 0,
-                                status: "Active",
-                                placedAt: Date.now(),
-                              };
-                              setTickets((prev) => [newTicket, ...prev]);
-
-                              // 2) 同步更新所選池子的獎池金額
-                              const delta = (Number(quantity) || 0) * (Number(ticketPrice) || 0);
-                              setPools((prev) =>
-                                prev.map((p) =>
-                                  p.id === selectedPool.id ? { ...p, potSui: p.potSui + delta } : p
-                                )
-                              );
-
-                              // 3) 顯示 +X SUI 動畫
-                              setPotDelta(delta);
-                              setFlashPot(true);
-                              setTimeout(() => setFlashPot(false), 700);  // 0.7s 淡出
-                              setTimeout(() => setPotDelta(null), 1200);  // 動畫結束後清除數值
-                            }}
-
+                            onClick={handleConfirm}
                             className="bg-emerald-600 hover:bg-emerald-500 text-white"
                           >
                             Confirm
