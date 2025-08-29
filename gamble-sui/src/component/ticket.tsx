@@ -295,17 +295,17 @@ export default function GambleSUIPage() {
   const handleConfirm = async () => {
     
     let coin_result = await fetchCoin()
-    console.log(coin_result)
+    console.log(selectedPoolId, coin_result, quote)
 
     const tx = buyTicket(
       selectedPoolId,
-      coin_result[0],
-      Number(quote * 1000000000)
+      coin_result,
+      Number(Number(quote) * 1000000000)
     )
-    tx.setSender(acc?.address)
     signAndExecuteTransaction(
       {
         transaction: tx,
+        chain: 'sui:testnet',
       },
       {
         onSuccess: (result) => {

@@ -4,12 +4,10 @@ import { coinWithBalance } from "@mysten/sui/transactions";
 
 export const buyTicket = (pool, in_coin, pPrice) => {
     const tx = new Transaction();
-
     const suiCoinInput = coinWithBalance({
         balance: pPrice,
-        useGasCoin: true, // keep the original gas coin for fee
-      });
-
+        useGasCoin: true,
+    });
     tx.moveCall({
         target: `${package_addr}::suipredict::buy_ticket`,
         arguments: [
