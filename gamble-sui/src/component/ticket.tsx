@@ -11,6 +11,12 @@ import { Separator } from "@/components/ui/separator";
 import { Ticket, Coins, Wallet, History, LineChart } from "lucide-react";
 import { graphQLFetcher } from "@/utils/GQLcli";
 import { package_addr } from "@/utils/package";
+import {
+  useCurrentAccount,
+  useSignAndExecuteTransaction,
+  useSuiClient,
+} from "@mysten/dapp-kit";
+import { buyTicket } from "@/utils/tx/buy_ticket";
 
 // ---------------------------------------------
 // GambleSUI — 單頁介面 (深色)
@@ -112,6 +118,8 @@ function formatPrice(n: number) {
 }
 
 export default function GambleSUIPage() {
+  const client = useSuiClient();
+  const acc = useCurrentAccount();
   // 假資料
   const [tickets, setTickets] = useState<TicketItem[]>(generateDemoTickets());
   const [statusFilter, setStatusFilter] = useState<string>("All");
@@ -129,6 +137,18 @@ export default function GambleSUIPage() {
   const [selectedPoolId, setSelectedPoolId] = useState<string | null>(null);
   const [poolsLoading, setPoolsLoading] = useState<boolean>(false);
   const [poolsError, setPoolsError] = useState<string | null>(null);
+
+  const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction({
+    execute: async ({ bytes, signature }) =>
+      await client.executeTransactionBlock({
+        transactionBlock: bytes,
+        signature,
+        options: {
+          showRawEffects: true,
+          showObjectChanges: true,
+        },
+      }),
+  });
 
   // GraphQL fetcher: load Pools from chain
   const fetchPools = React.useCallback(async () => {
@@ -191,7 +211,7 @@ export default function GambleSUIPage() {
           if (bal) {
             balanceMist = toNum(bal);
           }
-          console.log(rawData, rawData.Struct ,dataFieldMap)
+          console.log(rawData, rawData.Struct, dataFieldMap)
           const ticketPrice = toSui(priceU64);
           const potSui = toSui(balanceMist);
           const expiresAt = Number(endTime) || 0;
@@ -221,6 +241,29 @@ export default function GambleSUIPage() {
       setPoolsLoading(false);
     }
   }, []);
+
+  async function fetchCoin(): any{
+    try {
+      const data: any = await graphQLFetcher({
+        query: `
+      {
+        owner(
+          address: "0x5a91d93d9982009e759681a5fa47645ae1454f792c87112038446993148e2193"
+        ){
+          coins{
+            nodes{
+              address
+            }
+          }
+        }
+      }
+    `
+      })
+      return data;
+    }
+    catch (err: any) {
+      console.error(err);
+    }
 
   // recompute selected pool when pools or selectedPoolId changes
   const selectedPool = useMemo(
