@@ -9,6 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Ticket, Coins, Wallet, History, LineChart } from "lucide-react";
+import { graphQLFetcher } from "@/utils/GQLcli";
+import { package_addr } from "@/utils/package";
 
 // ---------------------------------------------
 // GambleSUI — 單頁介面 (深色)
@@ -123,8 +125,100 @@ export default function GambleSUIPage() {
   const [flashPot, setFlashPot] = useState(false);
 
   // pools state
-  const [pools, setPools] = useState<PoolItem[]>(generateDemoPools());
+  const [pools, setPools] = useState<PoolItem[]>([]);
   const [selectedPoolId, setSelectedPoolId] = useState<string | null>(null);
+  const [poolsLoading, setPoolsLoading] = useState<boolean>(false);
+  const [poolsError, setPoolsError] = useState<string | null>(null);
+
+  // GraphQL fetcher: load Pools from chain
+  const fetchPools = React.useCallback(async () => {
+    setPoolsLoading(true);
+    setPoolsError(null);
+    try {
+      const data: any = await graphQLFetcher({
+        query: `
+          {
+            objects(
+              filter: { type: "${package_addr}::suipredict::Pool" }
+            ) {
+              edges {
+                node {
+                  address
+                  asMoveObject {
+                    contents {
+                      type { layout }
+                      data
+                    }
+                  }
+                }
+              }
+            }
+          }
+        `,
+      });
+
+      const WINDOW_MS = 100000; // must match suipredict.create_pool window
+      const toNum = (v: any): number => {
+        if (v === null || v === undefined) return 0;
+        if (typeof v === "string") return Number(v);
+        if (typeof v === "number") return v;
+        if (typeof v === "object") {
+          if (v.value !== undefined) return toNum(v.value);
+          if (v.fields?.value !== undefined) return toNum(v.fields.value);
+        }
+        return 0;
+      };
+      const toSui = (mist: number) => mist / 1e9;
+
+      const edges: any[] = data?.objects?.edges ?? [];
+      const mapped: PoolItem[] = edges
+        .map((e) => {
+          const node = e?.node ?? {};
+          const addr: string | undefined = node.address;
+          const contents = node?.asMoveObject?.contents;
+          const rawData: any = contents?.data ?? {};
+          const dataFields: any = rawData?.fields ?? rawData ?? {};
+          console.log("Raw Pool Data", addr, rawData, dataFields);
+          if (!addr || !dataFields) return null;
+          const priceU64 = toNum(dataFields.price ?? dataFields?.fields?.price);
+          const endTimeObj = dataFields[7]
+          console.log("Pool", addr, { priceU64, endTimeObj });
+          // Balance<SUI> can be nested; try common shapes
+          let balanceMist = 0;
+          const bal = dataFields.balance ?? dataFields?.fields?.balance;
+          if (bal) {
+            balanceMist = toNum(bal);
+          }
+
+          const ticketPrice = toSui(priceU64);
+          const potSui = toSui(balanceMist);
+          const expiresAt = Number(endTime) || 0;
+          const createdAt = expiresAt > 0 ? Math.max(expiresAt - WINDOW_MS, 0) : 0;
+
+          return {
+            id: addr,
+            name: `Round ${addr.slice(2, 6).toUpperCase()}`,
+            createdAt,
+            expiresAt,
+            potSui,
+            ticketPrice,
+          } as PoolItem;
+        })
+        .filter(Boolean) as PoolItem[];
+
+      // Sort by soonest to expire first
+      mapped.sort((a, b) => (a.expiresAt || 0) - (b.expiresAt || 0));
+      setPools(mapped);
+
+      // Keep selection if still present; otherwise clear
+      setSelectedPoolId((prev) => (mapped.some((p) => p.id === prev) ? prev : null));
+    } catch (err: any) {
+      console.error("fetchPools error", err);
+      setPoolsError(err?.message || "Failed to load pools");
+    } finally {
+      setPoolsLoading(false);
+    }
+  }, []);
 
   // recompute selected pool when pools or selectedPoolId changes
   const selectedPool = useMemo(
@@ -149,6 +243,11 @@ export default function GambleSUIPage() {
     }, 1000);
     return () => clearInterval(t);
   }, [pools, selectedPoolId]);
+
+  // initial load
+  React.useEffect(() => {
+    fetchPools();
+  }, [fetchPools]);
 
   React.useEffect(() => {
     if (selectedPool) {
@@ -452,6 +551,19 @@ export default function GambleSUIPage() {
                 <CardDescription className="text-zinc-400">
                   Select a pool to view details and buy.
                 </CardDescription>
+                <div className="mt-2 flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    className="bg-zinc-800 hover:bg-zinc-700 text-zinc-100"
+                    onClick={fetchPools}
+                    disabled={poolsLoading}
+                  >
+                    {poolsLoading ? "Loading…" : "Refresh"}
+                  </Button>
+                  {poolsError && (
+                    <span className="text-xs text-rose-400">{poolsError}</span>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="text-zinc-300">
                 <div className="rounded-md border border-zinc-800 overflow-hidden">
@@ -466,6 +578,20 @@ export default function GambleSUIPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
+                      {poolsLoading && (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-sm text-zinc-400">
+                            Loading pools from chain…
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {!poolsLoading && pools.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-sm text-zinc-500">
+                            No pools found.
+                          </TableCell>
+                        </TableRow>
+                      )}
                       {pools.map((p) => {
                         const timeLeft = p.expiresAt - Date.now();
                         const expired = timeLeft <= 0;
