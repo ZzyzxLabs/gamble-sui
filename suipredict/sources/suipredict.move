@@ -136,6 +136,7 @@ module suipredict::suipredict {
 
     // Fetch actual price from oracle
     public fun fixed_price(
+        admin: &AdminCap,
         oracleHolder: &OracleHolder,
         pool: &mut Pool,
         ctx: &mut TxContext
