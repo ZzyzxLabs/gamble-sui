@@ -118,10 +118,10 @@ const Admin = () => {
       ]);
 
       console.log("Full Pool JSON:", JSON.stringify(poolResult, null, 2));
-      
+
       // Extract pool addresses
       const poolAddresses = poolResult?.objects?.edges?.map((edge: any) => edge.node.address) || [];
-      
+
       // Fetch creator information for each pool
       const creatorPromises = poolAddresses.map(async (address: string) => {
         try {
@@ -153,7 +153,7 @@ const Admin = () => {
 
       // Wait for all creator queries to complete
       const creatorResults = await Promise.all(creatorPromises);
-      
+
       // Create a map for easy lookup
       const creatorMap = creatorResults.reduce((acc, result) => {
         acc[result.poolAddress] = result.creator;
@@ -168,7 +168,7 @@ const Admin = () => {
         endTime: new Date(Date.now() + Math.random() * 7 * 24 * 60 * 60 * 1000).getTime(), // Placeholder end time (random within next week)
         status: "active"
       })) || [];
-      
+
       setPools(extractedPools);
       console.log("Pools with creators:", extractedPools);
     } catch (error) {
@@ -203,7 +203,7 @@ const Admin = () => {
           `,
         }),
       ]);
-      
+
       console.log("AdminCap:", adminCapResult);
       // console.log("Existing Pools:", poolResult);
       if (!adminCapResult?.owner?.objects?.nodes?.length) {
@@ -232,7 +232,7 @@ const Admin = () => {
             console.error("Transaction failed:", error);
             alert(
               "Transaction failed: " +
-                (error instanceof Error ? error.message : String(error))
+              (error instanceof Error ? error.message : String(error))
             );
           },
         }
@@ -241,7 +241,7 @@ const Admin = () => {
       console.error("Error starting game:", error);
       alert(
         "Failed to start game: " +
-          (error instanceof Error ? error.message : String(error))
+        (error instanceof Error ? error.message : String(error))
       );
     } finally {
       setIsLoading(false);
