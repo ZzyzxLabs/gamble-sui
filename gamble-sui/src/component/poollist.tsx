@@ -106,7 +106,7 @@ const PoolCard = ({
   async function handleStopPool() {
     try {
       // Create the transaction with appropriate parameters
-      const transaction = fixed_price(pool.address, null); // Adjust parameters as needed
+      const transaction = fixed_price(pool.address); // Adjust parameters as needed
       signAndExecuteTransaction({
         transaction: transaction
       });
