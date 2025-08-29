@@ -4,18 +4,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
 import { Ticket, Coins, Wallet, History, LineChart } from "lucide-react";
 
 // ---------------------------------------------
 // GambleSUI — 單頁介面 (深色)
-// 左：玩家持有的 Ticket 總覽
+// 左：玩家持有的 Ticket 總覽 
 // 右：購買區域（下單購票 + 報價）
 // ---------------------------------------------
 
@@ -118,17 +115,18 @@ export default function GambleSUIPage() {
   const [statusFilter, setStatusFilter] = useState<string>("All");
 
   // 右側下單狀態
-  const [round, setRound] = useState<string>("current");
   const [quote, setQuote] = useState<string>("4.7000"); // 報價（玩家預測價格）
   const [quantity, setQuantity] = useState<string>("1"); // 購買張數
   const [ticketPrice, setTicketPrice] = useState<string>("1"); // 每張票花費 SUI
-  const [fastMode, setFastMode] = useState<boolean>(true); // 快速下單模式（跳過部分二次確認）
+
+  const [potDelta, setPotDelta] = useState<number | null>(null);
+  const [flashPot, setFlashPot] = useState(false);
 
   // pools state
   const [pools, setPools] = useState<PoolItem[]>(generateDemoPools());
   const [selectedPoolId, setSelectedPoolId] = useState<string | null>(null);
 
-  // recompute selected pool
+  // recompute selected pool when pools or selectedPoolId changes
   const selectedPool = useMemo(
     () => pools.find((p) => p.id === selectedPoolId) || null,
     [pools, selectedPoolId]
@@ -136,10 +134,30 @@ export default function GambleSUIPage() {
 
   // tick every second so "time left" updates
   const [, forceTick] = useState(0);
+
   React.useEffect(() => {
-    const t = setInterval(() => forceTick((x) => x + 1), 1000);
+    const t = setInterval(() => {
+      forceTick((x) => x + 1);
+
+      // 選取的池子過期就清掉
+      if (selectedPoolId) {
+        const p = pools.find(pp => pp.id === selectedPoolId);
+        if (p && p.expiresAt - Date.now() <= 0) {
+          setSelectedPoolId(null);
+        }
+      }
+    }, 1000);
     return () => clearInterval(t);
-  }, []);
+  }, [pools, selectedPoolId]);
+
+  React.useEffect(() => {
+    if (selectedPool) {
+      setTicketPrice(String(selectedPool.ticketPrice));
+    }
+  }, [selectedPool]);
+
+  const isSelectedExpired = selectedPool ? (selectedPool.expiresAt - Date.now() <= 0) : true;
+
 
   const qty = Number(quantity) || 0;
   const pricePer = Number(ticketPrice) || 0;
@@ -152,21 +170,6 @@ export default function GambleSUIPage() {
 
   const totalStake = useMemo(() => tickets.reduce((acc, t) => acc + t.stake, 0), [tickets]);
   const activeCount = useMemo(() => tickets.filter((t) => t.status === "Active").length, [tickets]);
-
-  function mockPlaceOrder() {
-    // 這裡改成你真正的鏈上呼叫：
-    // 1) 連接 Sui 錢包 (例如 @mysten/wallet-kit)
-    // 2) 調用你的合約 entry function (例如 create_ticket / bet / purchase)
-    const newTicket: TicketItem = {
-      id: `T-${Math.floor(Math.random() * 9000 + 1000)}`,
-      round: round === "current" ? "Round 129" : "Round 130",
-      quote: Number(quote) || 0,
-      stake: Number(ticketPrice) || 0,
-      status: "Active",
-      placedAt: Date.now(),
-    };
-    setTickets((prev) => [newTicket, ...prev]);
-  }
 
   return (
     <div className="min-h-screen w-full bg-[#0b0b0f] text-zinc-100 text-white">
@@ -280,10 +283,21 @@ export default function GambleSUIPage() {
                       </div>
                       <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
                         <div className="text-xs text-zinc-400">Pot (SUI)</div>
-                        <div className="mt-1 text-base font-medium">
+                        <div className="mt-1 text-base font-medium flex items-baseline gap-2">
                           {selectedPool.potSui.toLocaleString(undefined, { maximumFractionDigits: 2 })} SUI
+                          {potDelta && potDelta > 0 && (
+                            <span
+                              className={[
+                                "text-emerald-300 text-xs font-semibold transition-all duration-700",
+                                flashPot ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1"
+                              ].join(" ")}
+                            >
+                              +{potDelta.toLocaleString(undefined, { maximumFractionDigits: 2 })} SUI
+                            </span>
+                          )}
                         </div>
                         <div className="mt-1 text-xs text-zinc-500">Ticket Price: {selectedPool.ticketPrice} SUI</div>
+
                       </div>
                       <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
                         <div className="text-xs text-zinc-400">Expires</div>
@@ -312,16 +326,18 @@ export default function GambleSUIPage() {
                       <DialogTrigger asChild>
                         <Button
                           size="lg"
+                          disabled={!selectedPool || isSelectedExpired}
                           className="relative w-full sm:w-auto inline-flex items-center gap-2 rounded-lg
                                       bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold
                                       shadow-lg shadow-emerald-500/30 hover:shadow-emerald-400/40
                                       ring-2 ring-emerald-400/40 hover:ring-emerald-300/50
                                       hover:from-emerald-400 hover:to-teal-400
                                       transition active:scale-[0.98] focus-visible:outline-none
-                                      focus-visible:ring-2 focus-visible:ring-emerald-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+                                      focus-visible:ring-2 focus-visible:ring-emerald-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900
+                                      disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Wallet className="h-4 w-4" />
-                          Buy Ticket
+                          {isSelectedExpired ? "Expired" : "Buy Ticket"}
                         </Button>
                       </DialogTrigger>
                       <DialogContent className="bg-zinc-900 border-zinc-800 text-zinc-100">
@@ -388,7 +404,9 @@ export default function GambleSUIPage() {
                           <Button
                             disabled={cost <= 0}
                             onClick={() => {
-                              // 將 pool 名稱寫進你的 demo tickets 的 round 欄位
+                              if (!selectedPool) return;
+
+                              // 1) 寫入一張 demo ticket（沿用你原本的邏輯）
                               const newTicket: TicketItem = {
                                 id: `T-${Math.floor(Math.random() * 9000 + 1000)}`,
                                 round: selectedPool.name,
@@ -398,11 +416,27 @@ export default function GambleSUIPage() {
                                 placedAt: Date.now(),
                               };
                               setTickets((prev) => [newTicket, ...prev]);
+
+                              // 2) 同步更新所選池子的獎池金額
+                              const delta = (Number(quantity) || 0) * (Number(ticketPrice) || 0);
+                              setPools((prev) =>
+                                prev.map((p) =>
+                                  p.id === selectedPool.id ? { ...p, potSui: p.potSui + delta } : p
+                                )
+                              );
+
+                              // 3) 顯示 +X SUI 動畫
+                              setPotDelta(delta);
+                              setFlashPot(true);
+                              setTimeout(() => setFlashPot(false), 700);  // 0.7s 淡出
+                              setTimeout(() => setPotDelta(null), 1200);  // 動畫結束後清除數值
                             }}
+
                             className="bg-emerald-600 hover:bg-emerald-500 text-white"
                           >
                             Confirm
                           </Button>
+
                         </DialogFooter>
                       </DialogContent>
                     </Dialog>
