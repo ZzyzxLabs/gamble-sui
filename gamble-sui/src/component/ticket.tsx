@@ -1,4 +1,3 @@
-
 import React from "react";
 import { useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,12 +17,6 @@ import {
   useSuiClient,
 } from "@mysten/dapp-kit";
 import { buyTicket } from "@/utils/tx/buy_ticket";
-
-// ---------------------------------------------
-// GambleSUI — 單頁介面 (深色)
-// 左：玩家持有的 Ticket 總覽 
-// 右：購買區域（下單購票 + 報價）
-// ---------------------------------------------
 
 // 假資料型別
 interface TicketItem {
@@ -51,8 +44,8 @@ function generateDemoPools(): PoolItem[] {
     {
       id: "P-129",
       name: "Round 129",
-      createdAt: now - 1000 * 60 * 30,            // 開了 30 分鐘
-      expiresAt: now + 1000 * 60 * 45,            // 再 45 分鐘到期
+      createdAt: now - 1000 * 60 * 30,
+      expiresAt: now + 1000 * 60 * 45,
       potSui: 32.5,
       ticketPrice: 1,
     },
@@ -119,16 +112,16 @@ function formatPrice(n: number) {
 }
 
 export default function GambleSUIPage() {
-  // 假資料
+  // states
   const client = useSuiClient();
   const acc = useCurrentAccount();
   const [tickets, setTickets] = useState<TicketItem[]>(generateDemoTickets());
   const [statusFilter, setStatusFilter] = useState<string>("All");
 
-  // 右側下單狀態
-  const [quote, setQuote] = useState<string>("4.7000"); // 報價（玩家預測價格）
-  const [quantity, setQuantity] = useState<string>("1"); // 購買張數
-  const [ticketPrice, setTicketPrice] = useState<string>("1"); // 每張票花費 SUI
+
+  const [quote, setQuote] = useState<string>("0"); //predicted price
+  const [quantity, setQuantity] = useState<string>("1");  //number of tickets
+  const [ticketPrice, setTicketPrice] = useState<string>("1");  //price per ticket (SUI)
 
   const [potDelta, setPotDelta] = useState<number | null>(null);
   const [flashPot, setFlashPot] = useState(false);
@@ -286,8 +279,8 @@ export default function GambleSUIPage() {
         // Sort by soonest to expire first
         mapped.sort((a, b) => (a.expiresAt || 0) - (b.expiresAt || 0));
         setPools(mapped);
-      let coin_result = await fetchCoin()
-      console.log(coin_result)
+        let coin_result = await fetchCoin()
+        console.log(coin_result)
         // Keep selection if still present; otherwise clear
         setSelectedPoolId((prev) => (mapped.some((p) => p.id === prev) ? prev : null));
       } catch (err: any) {
@@ -311,8 +304,7 @@ export default function GambleSUIPage() {
     React.useEffect(() => {
       const t = setInterval(() => {
         forceTick((x) => x + 1);
-
-        // 選取的池子過期就清掉
+        // if selected pool expired, clear selection
         if (selectedPoolId) {
           const p = pools.find(pp => pp.id === selectedPoolId);
           if (p && p.expiresAt - Date.now() <= 0) {
@@ -526,7 +518,7 @@ export default function GambleSUIPage() {
                             </DialogDescription>
                           </DialogHeader>
 
-                          {/* Reuse your existing inputs (you可自行保留/加驗證) */}
+                          {/* Reuse your existing inputs */}
                           <div className="space-y-4">
                             <div className="grid gap-3">
                               <Label>Your Quote (SUI/USD)</Label>
@@ -656,7 +648,6 @@ export default function GambleSUIPage() {
                               className={[
                                 "transition-colors cursor-pointer",
                                 expired ? "opacity-50" : "hover:bg-zinc-900/60",
-                                // ★ 被選中：整列換色、左側加強邊、外圈 ring
                                 selected && "bg-indigo-950/40 border-l-2 border-indigo-500 ring-1 ring-indigo-600/30"
                               ].filter(Boolean).join(" ")}
                             >
@@ -677,13 +668,12 @@ export default function GambleSUIPage() {
                                   className={[
                                     "text-white transition-all",
                                     expired && "disabled:opacity-50 disabled:cursor-not-allowed",
-                                    // ★ 被選中：顏色、陰影、微放大
                                     selected
                                       ? "bg-emerald-600 hover:bg-emerald-500 shadow-lg shadow-emerald-600/20 scale-[1.03]"
                                       : "bg-indigo-600 hover:bg-indigo-500"
                                   ].filter(Boolean).join(" ")}
                                   onClick={(e) => {
-                                    e.stopPropagation();               // 避免觸發 row onClick
+                                    e.stopPropagation();
                                     if (!expired) setSelectedPoolId(p.id);
                                   }}
                                 >
