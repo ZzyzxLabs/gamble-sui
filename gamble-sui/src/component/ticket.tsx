@@ -18,12 +18,12 @@ import {
 } from "@mysten/dapp-kit";
 import { buyTicket } from "@/utils/tx/buy_ticket";
 
-// 假資料型別
+// ---- Stats ----
 interface TicketItem {
   id: string;
-  round: string; // 例如：2025-08-26 20:00 (Round 128)
-  quote: number; // 玩家報價（例如 SUI/USD 價格）
-  stake: number; // 下注的 SUI 數量
+  round: string; // e.g. "Round 128"
+  quote: number; // predicted price (SUI/USD)
+  stake: number; // SUI amount staked
   status: "Active" | "Won" | "Lost" | "Settled";
   placedAt: number; // ms timestamp
 }
