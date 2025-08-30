@@ -114,12 +114,12 @@ module suipredict::suipredict {
     // Player buys a ticket
     public fun buy_ticket(
         pool: &mut Pool,
-        in_coin: &mut Coin<SUI>,
+        in_coin: Coin<SUI>,
         pPrice: u64,
         ctx: &mut TxContext
     ) {
-        let buy_coin = coin::split(in_coin, (pool.price as u64), ctx);
-        balance::join(&mut pool.balance, into_balance(buy_coin));
+        // let buy_coin = coin::split(in_coin, (pool.price as u64), ctx);
+        balance::join(&mut pool.balance, into_balance(in_coin));
         let ticket = Ticket {
             id: object::new(ctx),
             pool_id: object::id(pool),
