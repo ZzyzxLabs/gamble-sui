@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { graphQLFetcher } from '../utils/GQLcli';
-import { useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
+import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
 import { fixed_price } from '@/utils/tx/fixed_price';
 import { package_addr } from '@/utils/package';
 interface Pool {
@@ -64,18 +64,19 @@ const mockPools: Pool[] = [
   }
 ];
 
-const PoolCard = ({ 
-  pool, 
-  index, 
-  showControls = false 
-}: { 
-  pool: Pool; 
-  index: number; 
+const PoolCard = ({
+  pool,
+  index,
+  showControls = false
+}: {
+  pool: Pool;
+  index: number;
   showControls?: boolean;
 }) => {
   const [isStopped, setIsStopped] = useState(false);
   const [isClient, setIsClient] = useState(false);
   const client = useSuiClient();
+  const acc = useCurrentAccount();
   const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction({
     execute: async ({ bytes, signature }) =>
       await client.executeTransactionBlock({
@@ -91,7 +92,7 @@ const PoolCard = ({
   useEffect(() => {
     setIsClient(true);
   }, []);
-  
+
   const formatEndTime = (timestamp?: number) => {
     if (!timestamp) return 'N/A';
     if (!isClient) {
@@ -102,11 +103,34 @@ const PoolCard = ({
     // Only format on client side to avoid hydration mismatches
     return date.toLocaleString();
   };
-  
+
   async function handleStopPool() {
     try {
+      const [adminCapResult] = await Promise.all([
+        graphQLFetcher({
+          query: `
+                  query {
+                    owner(address:"${acc.address}"){
+                      objects(filter:{type:"${package_addr}::suipredict::AdminCap"}){
+                        nodes{
+                          address
+                        }
+                      }
+                    }
+                  }
+                `,
+        }),
+      ]);
+
+      console.log("AdminCap:", adminCapResult);
+      // console.log("Existing Pools:", poolResult);
+      if (!adminCapResult?.owner?.objects?.nodes?.length) {
+        alert("No AdminCap found for your address");
+      }
+      const adminCap = adminCapResult.owner.objects.nodes[0].address;
+      const oracleHolder = "0x87ef65b543ecb192e89d1e6afeaf38feeb13c3a20c20ce413b29a9cbfbebd570"; // Replace with actual oracle holder address
       // Create the transaction with appropriate parameters
-      const transaction = fixed_price(pool.address); // Adjust parameters as needed
+      const transaction = fixed_price(adminCap, oracleHolder, pool.address); // Adjust parameters as needed
       signAndExecuteTransaction({
         transaction: transaction
       });
@@ -152,11 +176,10 @@ const PoolCard = ({
             <button
               onClick={handleStopPool}
               disabled={isStopped}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                isStopped
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${isStopped
                   ? "bg-gray-300 text-gray-500 cursor-not-allowed"
                   : "bg-red-500 text-white hover:bg-red-600"
-              }`}
+                }`}
             >
               {isStopped ? "Stopped" : "Stop"}
             </button>
@@ -166,9 +189,8 @@ const PoolCard = ({
       {(showControls || pool.status) && (
         <div className="flex items-center">
           <div
-            className={`w-2 h-2 rounded-full mr-2 ${
-              isStopped ? "bg-red-500" : "bg-green-500"
-            }`}
+            className={`w-2 h-2 rounded-full mr-2 ${isStopped ? "bg-red-500" : "bg-green-500"
+              }`}
           />
           <span className="text-sm text-gray-600">
             Status: {isStopped ? "Stopped" : (pool.status || "Active")}
@@ -259,7 +281,7 @@ export default function PoolList({
   return (
     <div className={`container mx-auto p-4 ${className}`}>
       <h1 className="text-2xl font-bold mb-6">Pool List</h1>
-      
+
       {pools.length === 0 ? (
         <div className="text-center p-8">
           <div className="text-gray-500">No pools found</div>
@@ -276,7 +298,7 @@ export default function PoolList({
           ))}
         </div>
       )}
-      
+
       {!useMockData && poolsData.length === 0 && data?.objects?.pageInfo?.hasNextPage && (
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-500">

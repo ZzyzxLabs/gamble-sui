@@ -120,8 +120,8 @@ function formatPrice(n: number) {
 export default function GambleSUIPage() {
   const client = useSuiClient();
   const acc = useCurrentAccount();
-  // 假資料
-  const [tickets, setTickets] = useState<TicketItem[]>(generateDemoTickets());
+  // 使用鏈上資料
+  const [tickets, setTickets] = useState<TicketItem[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("All");
 
   // 右側下單狀態
@@ -154,6 +154,83 @@ export default function GambleSUIPage() {
       }),
   });
 
+  async function fetchTicket() {
+    if (!acc?.address) {
+      setTickets([]);
+      return;
+    }
+    try {
+      const data: any = await graphQLFetcher({
+        query: `
+                          query {
+                            owner(address:"${acc.address}"){
+                              objects(filter:{type:"${package_addr}::suipredict::Ticket"}){
+                                nodes{
+                                  address
+                                }
+                              }
+                            }
+                          }
+                        `,
+      });
+
+      const toNum = (v: any): number => {
+        if (v === null || v === undefined) return 0;
+        if (typeof v === "string") return Number(v);
+        if (typeof v === "number") return v;
+        if (typeof v === "object") {
+          if (v.value !== undefined) return toNum(v.value);
+          if (v.fields?.value !== undefined) return toNum(v.fields.value);
+          if (v.Number !== undefined) return toNum(v.Number);
+        }
+        return 0;
+      };
+      const fromFixed = (u64Scaled: number) => u64Scaled / 1e9;
+
+      const nodes: any[] = data?.owner?.objects?.nodes ?? [];
+      const now = Date.now();
+
+      const mapped: TicketItem[] = nodes.map((n) => {
+        const address: string = n?.address;
+        const raw = n?.asMoveObject?.contents?.data ?? {};
+        const fieldsArr = Array.isArray(raw.Struct) ? raw.Struct : Object.values(raw.Struct ?? {});
+        const fieldMap = fieldsArr.reduce((acc: Record<string, any>, f: any) => {
+          acc[f.name] = f.value;
+          return acc;
+        }, {} as Record<string, any>);
+
+        const priceU64 = toNum(fieldMap.price);
+        // pool_id can be nested; best-effort to extract string id
+        let poolId: string | undefined = undefined;
+        const pid = fieldMap.pool_id;
+        if (typeof pid === "string") poolId = pid;
+        else if (pid?.fields?.id) poolId = pid.fields.id;
+        else if (pid?.id) poolId = pid.id;
+
+        // match to loaded pool (if present) for name, price, and expiry
+        const pool = poolId ? pools.find((p) => p.id === poolId) : undefined;
+        const roundName = pool ? pool.name : (poolId ? `Round ${poolId.slice(2, 6).toUpperCase()}` : "Round ?");
+        const stakeSui = pool ? pool.ticketPrice : 0;
+        const isActive = pool ? pool.expiresAt - Date.now() > 0 : true;
+
+        const t: TicketItem = {
+          id: address,
+          round: roundName,
+          quote: fromFixed(priceU64),
+          stake: stakeSui,
+          status: isActive ? "Active" : "Settled",
+          // We don't have creation ts from object; use now as a placeholder
+          placedAt: now,
+        };
+        return t;
+      });
+
+      setTickets(mapped);
+      console.log("Tickets:", mapped);
+    } catch (err) {
+      console.error("fetchTicket error", err);
+    }
+  }
   // GraphQL fetcher: load Pools from chain
   const fetchPools = React.useCallback(async () => {
     setPoolsLoading(true);
@@ -202,7 +279,7 @@ export default function GambleSUIPage() {
           const contents = node?.asMoveObject?.contents;
           const rawData: any = contents?.data ?? {};
           const dataFieldMap = (Array.isArray(rawData.Struct) ? rawData.Struct : Object.values(rawData.Struct))
-            .reduce((acc, field: any) => {
+            .reduce((acc: Record<string, any>, field: any) => {
               acc[field.name] = field.value;
               return acc;
             }, {} as Record<string, any>);
@@ -233,9 +310,9 @@ export default function GambleSUIPage() {
 
       // Sort by soonest to expire first
       mapped.sort((a, b) => (a.expiresAt || 0) - (b.expiresAt || 0));
-      setPools(mapped);
-      let coin_result = await fetchCoin()
-      console.log(coin_result)
+  setPools(mapped);
+  // refresh owned tickets after pools are known (to resolve pool names/prices)
+  fetchTicket();
       // Keep selection if still present; otherwise clear
       setSelectedPoolId((prev) => (mapped.some((p) => p.id === prev) ? prev : null));
     } catch (err: any) {
@@ -297,7 +374,7 @@ export default function GambleSUIPage() {
   );
 
   const handleConfirm = async () => {
-    
+
     let coin_result = await fetchCoin()
     console.log(selectedPoolId, coin_result, quote)
     const price = Number(ticketPrice) * 1000000000
@@ -323,6 +400,8 @@ export default function GambleSUIPage() {
           alert(
             "Game started successfully! Transaction digest: " + result.digest
           );
+          // refresh tickets from chain
+          fetchTicket();
         },
         onError: (error) => {
           console.error("Transaction failed:", error);
@@ -333,16 +412,6 @@ export default function GambleSUIPage() {
         },
       }
     );
-    // 1) 寫入一張 demo ticket（沿用你原本的邏輯）
-    const newTicket: TicketItem = {
-      id: `T-${Math.floor(Math.random() * 9000 + 1000)}`,
-      round: selectedPool!.name,
-      quote: Number(quote) || 0,
-      stake: Number(ticketPrice) || 0,
-      status: "Active",
-      placedAt: Date.now(),
-    };
-    setTickets((prev) => [newTicket, ...prev]);
 
     // 2) 同步更新所選池子的獎池金額
     const delta = (Number(quantity) || 0) * (Number(ticketPrice) || 0);
@@ -381,6 +450,13 @@ export default function GambleSUIPage() {
   React.useEffect(() => {
     fetchPools();
   }, [fetchPools]);
+
+  // refresh tickets when account changes (e.g., wallet connects)
+  React.useEffect(() => {
+    if (acc?.address) {
+      fetchTicket();
+    }
+  }, [acc?.address]);
 
   React.useEffect(() => {
     if (selectedPool) {
@@ -447,8 +523,12 @@ export default function GambleSUIPage() {
                       <SelectItem value="Settled">Settled</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Button variant="secondary" className="bg-zinc-800 text-zinc-100 hover:bg-zinc-700" onClick={() => setTickets(generateDemoTickets())}>
-                    Reset Demo Data
+                  <Button
+                    variant="secondary"
+                    className="bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
+                    onClick={() => fetchTicket()}
+                  >
+                    Refresh Tickets
                   </Button>
                 </div>
               </CardHeader>
