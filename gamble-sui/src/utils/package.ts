@@ -1,3 +1,3 @@
-export const package_addr = "0xbd54ff86d9c1fea5f552ad305bc52ec4e8e255fd3af1537956da5e26add6ddf3"
+export const package_addr = "0xe394d5735482a23e08542353653dde06edc518b39895e8c0a2a8559a6aef52d4"
 
 // admin cap: 0xbe58d8476b39f0ff5e9f9e0c43319cd6038c9f9f42ad8546ef2dee876d267766
