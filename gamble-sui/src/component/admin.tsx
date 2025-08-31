@@ -63,64 +63,38 @@ const Admin = () => {
       const [poolResult] = await Promise.all([
         graphQLFetcher({
           query: `
-            {
-  objects(
-    filter: {
-      type: "${package_addr}::suipredict::Pool"
-    }
-  ) {
-    edges {
-      node {
-        address
-        dynamicFields {
-          edges {
-            node {
-              name {
-                type {
-                  layout
+            query {
+              objects(
+                filter: {
+                  type: "${package_addr}::suipredict::Pool"
                 }
-                data
-              }
-              value {
-                __typename
-                ... on MoveObject {
-                  address
-                  contents {
-                    type {
-                      layout
+              ) {
+                edges {
+                  node {
+                    address
+                    asMoveObject {
+                      contents {
+                        json
+                      }
                     }
-                    data
                   }
-                }
-                ... on MoveValue {
-                  type {
-                    layout
-                  }
-                  data
                 }
               }
             }
-          }
-        }
-        objects {
-          edges {
-            node {
-              address
-            }
-          }
-        }
-      }
-    }
-  }
-}
           `,
         }),
       ]);
 
       console.log("Full Pool JSON:", JSON.stringify(poolResult, null, 2));
 
-      // Extract pool addresses
-      const poolAddresses = poolResult?.objects?.edges?.map((edge: any) => edge.node.address) || [];
+      // Extract pool addresses and JSON contents
+      const poolData = poolResult?.objects?.edges?.map((edge: any) => ({
+        address: edge.node.address,
+        contents: edge.node.asMoveObject?.contents?.json || {}
+      })) || [];
+
+      // Extract pool addresses for creator queries
+      const poolAddresses = poolData.map((pool: any) => pool.address);
 
       // Fetch creator information for each pool
       const creatorPromises = poolAddresses.map(async (address: string) => {
@@ -160,17 +134,37 @@ const Admin = () => {
         return acc;
       }, {} as Record<string, string>);
       console.log("Creator Map:", creatorResults);
-      // Extract pool addresses and create pool objects with real creators
-      const extractedPools = poolResult?.objects?.edges?.map((edge: any, index: number) => ({
-        address: edge.node.address,
-        creator: creatorMap[edge.node.address] || "0x" + "a".repeat(40), // Use real creator or fallback
-        balance: `${Math.floor(Math.random() * 3000) + 500}.${Math.floor(Math.random() * 100).toString().padStart(2, '0')} SUI`, // Placeholder balance
-        endTime: new Date(Date.now() + Math.random() * 7 * 24 * 60 * 60 * 1000).getTime(), // Placeholder end time (random within next week)
-        status: "active"
-      })) || [];
+      
+      // Create pool objects with real creators and can_redeem field
+      const extractedPools = poolData.map((pool: any, index: number) => {
+        const contents = pool.contents || {};
+        console.log(`Pool ${pool.address} contents:`, contents);
+        
+        // Extract can_redeem with more robust handling
+        let canRedeem = false;
+        if (contents.canRedeem !== undefined) {
+          canRedeem = contents.canRedeem;
+        } else if (contents.can_redeem !== undefined) {
+          canRedeem = contents.can_redeem;
+        } else if (contents.fields?.canRedeem !== undefined) {
+          canRedeem = contents.fields.canRedeem;
+        } else if (contents.fields?.can_redeem !== undefined) {
+          canRedeem = contents.fields.can_redeem;
+        }
+        console.log(`Pool ${pool.address} canRedeem:`, canRedeem);
+        
+        return {
+          address: pool.address,
+          creator: creatorMap[pool.address] || "0x" + "a".repeat(40),
+          balance: `${Math.floor(Math.random() * 3000) + 500}.${Math.floor(Math.random() * 100).toString().padStart(2, '0')} SUI`, // Placeholder balance
+          endTime: new Date(Date.now() + Math.random() * 7 * 24 * 60 * 60 * 1000).getTime(), // Placeholder end time
+          status: "active",
+          can_redeem: canRedeem // Extract can_redeem from JSON contents with robust handling
+        };
+      });
 
       setPools(extractedPools);
-      console.log("Pools with creators:", extractedPools);
+      console.log("Pools with creators and can_redeem:", extractedPools);
     } catch (error) {
       console.error("Error fetching pools:", error);
     } finally {

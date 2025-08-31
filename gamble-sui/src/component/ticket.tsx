@@ -37,6 +37,7 @@ interface PoolItem {
   expiresAt: number;   // deadline
   potSui: number;      // current prize pot
   ticketPrice: number; // price per ticket (SUI)
+  canRedeem?: boolean; // whether tickets can be redeemed
 }
 
 function generateDemoPools(): PoolItem[] {
@@ -205,13 +206,21 @@ export default function GambleSUIPage() {
         const roundName = pool ? pool.name : (poolId ? `Round ${poolId.slice(2, 6).toUpperCase()}` : "Round ?");
         const stakeSui = pool ? pool.ticketPrice : 0;
         const isActive = pool ? pool.expiresAt - Date.now() > 0 : true;
+        
+        // Determine status based on pool state
+        let status: TicketItem["status"] = "Active";
+        if (pool?.canRedeem) {
+          status = "Won"; // Pool allows redemption, tickets are winners
+        } else if (!isActive) {
+          status = "Settled"; // Pool expired but no redemption allowed
+        }
 
         const t: TicketItem = {
           id: address,
           round: roundName,
           quote: fromFixed(priceU64),
           stake: stakeSui,
-          status: isActive ? "Active" : "Settled",
+          status: status,
           // We don't have creation ts from object; use now as a placeholder
           placedAt: now,
         };
@@ -241,6 +250,7 @@ export default function GambleSUIPage() {
                   asMoveObject {
                     contents {
                       type { layout }
+                      json
                       data
                     }
                   }
@@ -271,20 +281,37 @@ export default function GambleSUIPage() {
           const addr: string | undefined = node.address;
           const contents = node?.asMoveObject?.contents;
           const rawData: any = contents?.data ?? {};
+          const jsonData: any = contents?.json ?? {};
+          
           const dataFieldMap = (Array.isArray(rawData.Struct) ? rawData.Struct : Object.values(rawData.Struct))
             .reduce((acc: Record<string, any>, field: any) => {
               acc[field.name] = field.value;
               return acc;
             }, {} as Record<string, any>);
           const endTime = dataFieldMap["end_time"]?.Number;
+          
           if (!addr || !dataFieldMap) return null;
           const priceU64 = toNum(dataFieldMap.price ?? dataFieldMap?.fields?.price);
+          
           // Balance<SUI> can be nested; try common shapes
           let balanceMist = 0;
           const bal = dataFieldMap.balance ?? dataFieldMap?.fields?.balance;
           if (bal) {
             balanceMist = toNum(bal);
           }
+          
+          // Extract canRedeem from JSON data (similar to admin component)
+          let canRedeem = false;
+          if (jsonData.canRedeem !== undefined) {
+            canRedeem = jsonData.canRedeem;
+          } else if (jsonData.can_redeem !== undefined) {
+            canRedeem = jsonData.can_redeem;
+          } else if (jsonData.fields?.canRedeem !== undefined) {
+            canRedeem = jsonData.fields.canRedeem;
+          } else if (jsonData.fields?.can_redeem !== undefined) {
+            canRedeem = jsonData.fields.can_redeem;
+          }
+          
           const ticketPrice = toSui(priceU64);
           const potSui = toSui(balanceMist);
           const expiresAt = Number(endTime) || 0;
@@ -297,6 +324,7 @@ export default function GambleSUIPage() {
             expiresAt,
             potSui,
             ticketPrice,
+            canRedeem,
           } as PoolItem;
         })
         .filter(Boolean) as PoolItem[];

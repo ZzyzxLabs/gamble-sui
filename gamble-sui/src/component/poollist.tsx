@@ -13,6 +13,7 @@ interface Pool {
   balance?: string;
   endTime?: number;
   status?: string;
+  can_redeem?: boolean;
 }
 
 interface PoolsResponse {
@@ -106,6 +107,11 @@ const PoolCard = ({
   };
 
   async function handleStopPool() {
+    if (!acc?.address) {
+      alert("Please connect your wallet first");
+      return;
+    }
+    
     try {
       const [adminCapResult] = await Promise.all([
         graphQLFetcher({
@@ -177,14 +183,15 @@ const PoolCard = ({
           <div className="ml-4">
             <button
               onClick={handleStopPool}
-              disabled={isStopped}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${isStopped
+              disabled={isStopped || pool.can_redeem}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${isStopped || pool.can_redeem
                   ? "bg-zinc-700 text-zinc-500 cursor-not-allowed"
                   : "bg-red-500 text-white hover:bg-red-600"
                 }`}
             >
-              {isStopped ? "Stopped" : "Stop"}
+              {isStopped ? "Stopped" : pool.can_redeem ? "Can Redeem" : "Stop"}
             </button>
+
           </div>
         )}
       </div>
