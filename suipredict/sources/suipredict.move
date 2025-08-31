@@ -105,7 +105,7 @@ module suipredict::suipredict {
             fixed_price: 0,
             canRedeem: false,
             indices: vector::empty<u64>(),
-            end_time: clock::timestamp_ms(clock) + 1000000000,  //259_200_000
+            end_time: clock::timestamp_ms(clock) + 100000,  //259_200_000
             oracleSetting: oracleSetting
         };
         transfer::share_object(pool);

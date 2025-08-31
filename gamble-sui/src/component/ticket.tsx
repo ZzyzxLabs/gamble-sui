@@ -17,6 +17,7 @@ import {
   useSuiClient,
 } from "@mysten/dapp-kit";
 import { buyTicket } from "@/utils/tx/buy_ticket";
+import { redeem } from "@/utils/tx/redeem";
 
 // ---- Stat component ----
 interface TicketItem {
@@ -157,10 +158,13 @@ export default function GambleSUIPage() {
       const data: any = await graphQLFetcher({
         query: `
                           query {
-                            owner(address:"${acc.address}"){
+                            owner(address:"${acc.address}"){ 
                               objects(filter:{type:"${package_addr}::suipredict::Ticket"}){
                                 nodes{
                                   address
+                                  contents{
+                                    json
+                                  }
                                 }
                               }
                             }
@@ -186,20 +190,15 @@ export default function GambleSUIPage() {
 
       const mapped: TicketItem[] = nodes.map((n) => {
         const address: string = n?.address;
-        const raw = n?.asMoveObject?.contents?.data ?? {};
-        const fieldsArr = Array.isArray(raw.Struct) ? raw.Struct : Object.values(raw.Struct ?? {});
-        const fieldMap = fieldsArr.reduce((acc: Record<string, any>, f: any) => {
-          acc[f.name] = f.value;
-          return acc;
-        }, {} as Record<string, any>);
+        const jsonContents = n?.contents?.json;
+        
+        if (!jsonContents) {
+          console.warn("No JSON contents for ticket:", address);
+          return null;
+        }
 
-        const priceU64 = toNum(fieldMap.price);
-        // pool_id can be nested; best-effort to extract string id
-        let poolId: string | undefined = undefined;
-        const pid = fieldMap.pool_id;
-        if (typeof pid === "string") poolId = pid;
-        else if (pid?.fields?.id) poolId = pid.fields.id;
-        else if (pid?.id) poolId = pid.id;
+        const priceU64 = toNum(jsonContents.price);
+        const poolId = jsonContents.pool_id;
 
         // match to loaded pool (if present) for name, price, and expiry
         const pool = poolId ? pools.find((p) => p.id === poolId) : undefined;
@@ -217,7 +216,7 @@ export default function GambleSUIPage() {
           placedAt: now,
         };
         return t;
-      });
+      }).filter(Boolean) as TicketItem[];
 
       setTickets(mapped);
       console.log("Tickets:", mapped);
@@ -421,6 +420,49 @@ export default function GambleSUIPage() {
     setTimeout(() => setPotDelta(null), 1200);
   };
 
+  const handleRedeem = async (ticket: TicketItem) => {
+    if (!acc?.address) {
+      alert("Please connect your wallet first");
+      return;
+    }
+
+    try {
+      // Find the pool for this ticket
+      const pool = pools.find(p => p.name === ticket.round);
+      if (!pool) {
+        alert("Pool not found for this ticket");
+        return;
+      }
+
+      const tx = redeem(ticket.id, pool.id);
+      
+      signAndExecuteTransaction(
+        {
+          transaction: tx,
+          chain: 'sui:testnet',
+        },
+        {
+          onSuccess: (result) => {
+            console.log("Redeem successful:", result);
+            alert("Ticket redeemed successfully! Transaction digest: " + result.digest);
+            // refresh tickets from chain
+            fetchTicket();
+          },
+          onError: (error) => {
+            console.error("Redeem failed:", error);
+            alert(
+              "Redeem failed: " +
+              (error instanceof Error ? error.message : String(error))
+            );
+          },
+        }
+      );
+    } catch (error) {
+      console.error("Redeem error:", error);
+      alert("Failed to redeem ticket: " + (error instanceof Error ? error.message : String(error)));
+    }
+  };
+
   // tick every second so "time left" updates
   const [, forceTick] = useState(0);
 
@@ -473,7 +515,7 @@ export default function GambleSUIPage() {
   const activeCount = useMemo(() => tickets.filter((t) => t.status === "Active").length, [tickets]);
 
   return (
-    <div className="min-h-screen w-full bg-[#0b0b0f] text-zinc-100 text-white">
+    <div className="min-h-screen w-full bg-[#0b0b0f] text-white">
       {/* 背景裝飾 */}
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-32 -left-32 h-80 w-80 rounded-full blur-3xl opacity-30 bg-indigo-600" />
@@ -542,6 +584,7 @@ export default function GambleSUIPage() {
                         <TableHead className="text-zinc-300">Stake</TableHead>
                         <TableHead className="text-zinc-300">Status</TableHead>
                         <TableHead className="text-right text-zinc-300">Placed</TableHead>
+                        <TableHead className="text-center text-zinc-300">Action</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -555,6 +598,17 @@ export default function GambleSUIPage() {
                             <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs ${STATUS_COLOR[t.status]}`}>{t.status}</span>
                           </TableCell>
                           <TableCell className="text-right text-zinc-300">{formatTime(t.placedAt)}</TableCell>
+                          <TableCell className="text-center">
+                            {(t.status === "Won" || t.status === "Settled") && (
+                              <Button
+                                size="sm"
+                                className="bg-emerald-600 hover:bg-emerald-500 text-white"
+                                onClick={() => handleRedeem(t)}
+                              >
+                                Redeem
+                              </Button>
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

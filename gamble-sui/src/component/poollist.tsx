@@ -6,6 +6,7 @@ import { graphQLFetcher } from '../utils/GQLcli';
 import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
 import { fixed_price } from '@/utils/tx/fixed_price';
 import { package_addr } from '@/utils/package';
+import { redeem_setting } from '@/utils/tx/redeem_setting';
 interface Pool {
   address: string;
   creator?: string;
@@ -130,7 +131,8 @@ const PoolCard = ({
       const adminCap = adminCapResult.owner.objects.nodes[0].address;
       const oracleHolder = "0x87ef65b543ecb192e89d1e6afeaf38feeb13c3a20c20ce413b29a9cbfbebd570"; // Replace with actual oracle holder address
       // Create the transaction with appropriate parameters
-      const transaction = fixed_price(adminCap, oracleHolder, pool.address); // Adjust parameters as needed
+      // const tx = fixed_price(adminCap, oracleHolder, pool.address); // Adjust parameters as needed
+      const transaction = redeem_setting(adminCap, pool.address);
       signAndExecuteTransaction({
         transaction: transaction
       });
@@ -142,31 +144,31 @@ const PoolCard = ({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 mb-4 border border-gray-200 hover:shadow-lg transition-shadow">
+    <div className="bg-zinc-900/60 backdrop-blur border border-zinc-800 rounded-lg shadow-lg p-6 mb-4 hover:bg-zinc-900/80 transition-all">
       <div className="flex justify-between items-start mb-4">
         <div className="flex-1">
-          <h3 className="text-lg font-semibold text-gray-800 mb-2">Pool #{index + 1}</h3>
-          <div className="space-y-2">
+          <h3 className="text-lg font-semibold text-zinc-100 mb-3">Pool #{index + 1}</h3>
+          <div className="space-y-3">
             <div>
-              <span className="text-sm font-medium text-gray-600">Address:</span>
-              <p className="text-sm text-gray-800 font-mono break-all">{pool.address}</p>
+              <span className="text-sm font-medium text-zinc-400">Address:</span>
+              <p className="text-sm text-zinc-200 font-mono break-all mt-1">{pool.address}</p>
             </div>
             {pool.creator && (
               <div>
-                <span className="text-sm font-medium text-gray-600">Creator:</span>
-                <p className="text-sm text-gray-800 font-mono break-all">{pool.creator}</p>
+                <span className="text-sm font-medium text-zinc-400">Creator:</span>
+                <p className="text-sm text-zinc-200 font-mono break-all mt-1">{pool.creator}</p>
               </div>
             )}
             {pool.balance && (
               <div>
-                <span className="text-sm font-medium text-gray-600">Balance:</span>
-                <p className="text-sm text-gray-800 font-semibold">{pool.balance}</p>
+                <span className="text-sm font-medium text-zinc-400">Balance:</span>
+                <p className="text-sm text-zinc-100 font-semibold mt-1">{pool.balance}</p>
               </div>
             )}
             {pool.endTime && (
               <div>
-                <span className="text-sm font-medium text-gray-600">End Time:</span>
-                <p className="text-sm text-gray-800">{formatEndTime(pool.endTime)}</p>
+                <span className="text-sm font-medium text-zinc-400">End Time:</span>
+                <p className="text-sm text-zinc-200 mt-1">{formatEndTime(pool.endTime)}</p>
               </div>
             )}
           </div>
@@ -177,7 +179,7 @@ const PoolCard = ({
               onClick={handleStopPool}
               disabled={isStopped}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${isStopped
-                  ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                  ? "bg-zinc-700 text-zinc-500 cursor-not-allowed"
                   : "bg-red-500 text-white hover:bg-red-600"
                 }`}
             >
@@ -189,10 +191,10 @@ const PoolCard = ({
       {(showControls || pool.status) && (
         <div className="flex items-center">
           <div
-            className={`w-2 h-2 rounded-full mr-2 ${isStopped ? "bg-red-500" : "bg-green-500"
+            className={`w-2 h-2 rounded-full mr-2 ${isStopped ? "bg-red-500" : "bg-emerald-500"
               }`}
           />
-          <span className="text-sm text-gray-600">
+          <span className="text-sm text-zinc-400">
             Status: {isStopped ? "Stopped" : (pool.status || "Active")}
           </span>
         </div>
@@ -230,17 +232,21 @@ export default function PoolList({
 
   if (!useMockData && poolsData.length === 0 && isLoading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <div className="text-lg">Loading pools...</div>
+      <div className="min-h-screen w-full bg-[#0b0b0f] text-zinc-100">
+        <div className="flex items-center justify-center p-8">
+          <div className="text-lg text-zinc-200">Loading pools...</div>
+        </div>
       </div>
     );
   }
 
   if (!useMockData && poolsData.length === 0 && error) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <div className="text-red-500">
-          Error loading pools: {error instanceof Error ? error.message : 'Unknown error'}
+      <div className="min-h-screen w-full bg-[#0b0b0f] text-zinc-100">
+        <div className="flex items-center justify-center p-8">
+          <div className="text-red-400">
+            Error loading pools: {error instanceof Error ? error.message : 'Unknown error'}
+          </div>
         </div>
       </div>
     );
@@ -261,7 +267,7 @@ export default function PoolList({
       <div className={`space-y-4 ${className}`}>
         {pools.length === 0 ? (
           <div className="text-center p-8">
-            <div className="text-gray-500">No pools found</div>
+            <div className="text-zinc-500">No pools found</div>
           </div>
         ) : (
           pools.map((pool, index) => (
@@ -279,33 +285,44 @@ export default function PoolList({
 
   // Default mode
   return (
-    <div className={`container mx-auto p-4 ${className}`}>
-      <h1 className="text-2xl font-bold mb-6">Pool List</h1>
+    <div className={`min-h-screen w-full bg-[#0b0b0f] text-zinc-100 ${className}`}>
+      {/* Background decoration similar to ticket page */}
+      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute -top-32 -left-32 h-80 w-80 rounded-full blur-3xl opacity-30 bg-indigo-600" />
+        <div className="absolute top-1/2 -right-32 h-80 w-80 rounded-full blur-3xl opacity-20 bg-fuchsia-600" />
+      </div>
 
-      {pools.length === 0 ? (
-        <div className="text-center p-8">
-          <div className="text-gray-500">No pools found</div>
+      <main className="mx-auto max-w-7xl p-4 md:p-8">
+        <div className="mb-6">
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-zinc-100">Pool List</h1>
+          <p className="text-sm text-zinc-400">Active prediction pools</p>
         </div>
-      ) : (
-        <div className="grid gap-4">
-          {pools.map((pool, index) => (
-            <PoolCard
-              key={pool.address}
-              pool={pool}
-              index={index}
-              showControls={showControls}
-            />
-          ))}
-        </div>
-      )}
 
-      {!useMockData && poolsData.length === 0 && data?.objects?.pageInfo?.hasNextPage && (
-        <div className="mt-6 text-center">
-          <p className="text-sm text-gray-500">
-            More pools available (pagination not implemented)
-          </p>
-        </div>
-      )}
+        {pools.length === 0 ? (
+          <div className="text-center p-8">
+            <div className="text-zinc-500">No pools found</div>
+          </div>
+        ) : (
+          <div className="grid gap-4">
+            {pools.map((pool, index) => (
+              <PoolCard
+                key={pool.address}
+                pool={pool}
+                index={index}
+                showControls={showControls}
+              />
+            ))}
+          </div>
+        )}
+
+        {!useMockData && poolsData.length === 0 && data?.objects?.pageInfo?.hasNextPage && (
+          <div className="mt-6 text-center">
+            <p className="text-sm text-zinc-500">
+              More pools available (pagination not implemented)
+            </p>
+          </div>
+        )}
+      </main>
     </div>
   );
 }

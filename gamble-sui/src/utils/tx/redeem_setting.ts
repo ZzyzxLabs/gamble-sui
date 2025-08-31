@@ -1,7 +1,7 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { package_addr } from "../package";
 
-export const create_pool = (adminCap, pool) => {
+export const redeem_setting = (adminCap, pool) => {
     const tx = new Transaction();
     tx.moveCall({
         target: `${package_addr}::suipredict::redeem_setting`,
