@@ -18,18 +18,12 @@ import {
 } from "@mysten/dapp-kit";
 import { buyTicket } from "@/utils/tx/buy_ticket";
 
-// ---------------------------------------------
-// GambleSUI — 單頁介面 (深色)
-// 左：玩家持有的 Ticket 總覽 
-// 右：購買區域（下單購票 + 報價）
-// ---------------------------------------------
-
-// 假資料型別
+// ---- Stat component ----
 interface TicketItem {
   id: string;
-  round: string; // 例如：2025-08-26 20:00 (Round 128)
-  quote: number; // 玩家報價（例如 SUI/USD 價格）
-  stake: number; // 下注的 SUI 數量
+  round: string;
+  quote: number;
+  stake: number;
   status: "Active" | "Won" | "Lost" | "Settled";
   placedAt: number; // ms timestamp
 }
@@ -50,8 +44,8 @@ function generateDemoPools(): PoolItem[] {
     {
       id: "P-129",
       name: "Round 129",
-      createdAt: now - 1000 * 60 * 30,            // 開了 30 分鐘
-      expiresAt: now + 1000 * 60 * 45,            // 再 45 分鐘到期
+      createdAt: now - 1000 * 60 * 30,
+      expiresAt: now + 1000 * 60 * 45,
       potSui: 32.5,
       ticketPrice: 1,
     },
@@ -120,14 +114,14 @@ function formatPrice(n: number) {
 export default function GambleSUIPage() {
   const client = useSuiClient();
   const acc = useCurrentAccount();
-  // 使用鏈上資料
+  // state for tickets
   const [tickets, setTickets] = useState<TicketItem[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("All");
 
-  // 右側下單狀態
-  const [quote, setQuote] = useState<string>("4.7000"); // 報價（玩家預測價格）
-  const [quantity, setQuantity] = useState<string>("1"); // 購買張數
-  const [ticketPrice, setTicketPrice] = useState<string>("1"); // 每張票花費 SUI
+  //state for inputs
+  const [quote, setQuote] = useState<string>(" "); //predicted price
+  const [quantity, setQuantity] = useState<string>("1"); //stake
+  const [ticketPrice, setTicketPrice] = useState<string>("1"); //ticket price
 
   const [potDelta, setPotDelta] = useState<number | null>(null);
   const [flashPot, setFlashPot] = useState(false);
@@ -310,9 +304,9 @@ export default function GambleSUIPage() {
 
       // Sort by soonest to expire first
       mapped.sort((a, b) => (a.expiresAt || 0) - (b.expiresAt || 0));
-  setPools(mapped);
-  // refresh owned tickets after pools are known (to resolve pool names/prices)
-  fetchTicket();
+      setPools(mapped);
+      // refresh owned tickets after pools are known (to resolve pool names/prices)
+      fetchTicket();
       // Keep selection if still present; otherwise clear
       setSelectedPoolId((prev) => (mapped.some((p) => p.id === prev) ? prev : null));
     } catch (err: any) {
@@ -323,7 +317,7 @@ export default function GambleSUIPage() {
     }
   }, []);
 
-  // 安全版 fetchCoin
+  // fetch user's SUI coins (to pick one for gas)
   async function fetchCoin(): Promise<string[]> {
     if (!acc?.address) {
       setCoins([]);
@@ -348,7 +342,6 @@ export default function GambleSUIPage() {
       `,
       });
 
-      // 防呆展開
       const nodes: Array<{ address?: string }> =
         data?.owner?.coins?.nodes ?? [];
 
@@ -413,7 +406,7 @@ export default function GambleSUIPage() {
       }
     );
 
-    // 2) 同步更新所選池子的獎池金額
+    // Update pot optimistically
     const delta = (Number(quantity) || 0) * (Number(ticketPrice) || 0);
     setPools((prev) =>
       prev.map((p) =>
@@ -421,11 +414,11 @@ export default function GambleSUIPage() {
       )
     );
 
-    // 3) 顯示 +X SUI 動畫
+    // Flash +X SUI animation
     setPotDelta(delta);
     setFlashPot(true);
-    setTimeout(() => setFlashPot(false), 700);  // 0.7s 淡出
-    setTimeout(() => setPotDelta(null), 1200);  // 動畫結束後清除數值
+    setTimeout(() => setFlashPot(false), 700);
+    setTimeout(() => setPotDelta(null), 1200);
   };
 
   // tick every second so "time left" updates
@@ -435,7 +428,7 @@ export default function GambleSUIPage() {
     const t = setInterval(() => {
       forceTick((x) => x + 1);
 
-      // 選取的池子過期就清掉
+      // if selected pool expired, clear selection
       if (selectedPoolId) {
         const p = pools.find(pp => pp.id === selectedPoolId);
         if (p && p.expiresAt - Date.now() <= 0) {
@@ -660,7 +653,7 @@ export default function GambleSUIPage() {
                           </DialogDescription>
                         </DialogHeader>
 
-                        {/* Reuse your existing inputs (you可自行保留/加驗證) */}
+                        {/* Reuse your existing inputs */}
                         <div className="space-y-4">
                           <div className="grid gap-3">
                             <Label>Your Quote (SUI/USD)</Label>
@@ -730,7 +723,7 @@ export default function GambleSUIPage() {
             </Card>
 
             {/* Pools list (scrollable) */}
-            <Card className="bg-zinc-900/60 backdrop-blur border-zinc-800 h-99 overflow-y-auto">
+            <Card className="bg-zinc-900/60 backdrop-blur border-zinc-800 h-99 overflow-y-auto overflow-x-hidden">
               <CardHeader>
                 <CardTitle className="text-lg text-white">Available Pools</CardTitle>
                 <CardDescription className="text-zinc-400">
