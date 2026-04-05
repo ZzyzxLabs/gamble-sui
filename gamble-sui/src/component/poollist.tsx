@@ -1,12 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { graphQLFetcher } from '../utils/GQLcli';
-import { useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
-import { fixed_price } from '@/utils/tx/fixed_price';
+import { useCurrentAccount, useDAppKit } from '@mysten/dapp-kit-react';
 import { package_addr } from '@/utils/package';
 import { redeem_setting } from '@/utils/tx/redeem_setting';
+import { fetchPoolsFromChain } from '@/utils/pool-ids';
 interface Pool {
   address: string;
   creator?: string;
@@ -14,16 +12,6 @@ interface Pool {
   endTime?: number;
   status?: string;
   can_redeem?: boolean;
-}
-
-interface PoolsResponse {
-  objects: {
-    nodes: Pool[];
-    pageInfo: {
-      hasNextPage: boolean;
-      endCursor: string;
-    };
-  };
 }
 
 interface PoolListProps {
@@ -77,19 +65,8 @@ const PoolCard = ({
 }) => {
   const [isStopped, setIsStopped] = useState(false);
   const [isClient, setIsClient] = useState(false);
-  const client = useSuiClient();
   const acc = useCurrentAccount();
-  const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction({
-    execute: async ({ bytes, signature }) =>
-      await client.executeTransactionBlock({
-        transactionBlock: bytes,
-        signature,
-        options: {
-          showRawEffects: true,
-          showObjectChanges: true,
-        },
-      }),
-  });
+  const dAppKit = useDAppKit();
 
   useEffect(() => {
     setIsClient(true);
@@ -113,35 +90,23 @@ const PoolCard = ({
     }
     
     try {
-      const [adminCapResult] = await Promise.all([
-        graphQLFetcher({
-          query: `
-                  query {
-                    owner(address:"${acc.address}"){
-                      objects(filter:{type:"${package_addr}::suipredict::AdminCap"}){
-                        nodes{
-                          address
-                        }
-                      }
-                    }
-                  }
-                `,
-        }),
-      ]);
+      const client = dAppKit.getClient();
+      const adminCapResult = await client.listOwnedObjects({
+        owner: acc.address,
+        type: `${package_addr}::suipredict::AdminCap`,
+      });
 
       console.log("AdminCap:", adminCapResult);
-      // console.log("Existing Pools:", poolResult);
-      if (!adminCapResult?.owner?.objects?.nodes?.length) {
+      if (!adminCapResult.objects.length) {
         alert("No AdminCap found for your address");
+        return;
       }
-      const adminCap = adminCapResult.owner.objects.nodes[0].address;
-      const oracleHolder = "0x87ef65b543ecb192e89d1e6afeaf38feeb13c3a20c20ce413b29a9cbfbebd570"; // Replace with actual oracle holder address
-      // Create the transaction with appropriate parameters
-      // const tx = fixed_price(adminCap, oracleHolder, pool.address); // Adjust parameters as needed
+      const adminCap = adminCapResult.objects[0].objectId;
       const transaction = redeem_setting(adminCap, pool.address);
-      signAndExecuteTransaction({
-        transaction: transaction
-      });
+      const result = await dAppKit.signAndExecuteTransaction({ transaction });
+      if (result.FailedTransaction) {
+        throw new Error(result.FailedTransaction.status.error?.message ?? 'Transaction failed');
+      }
       setIsStopped(true);
       console.log(`Stopping pool: ${pool.address}`);
     } catch (error) {
@@ -210,20 +175,6 @@ const PoolCard = ({
   );
 };
 
-const POOLS_QUERY = `
-  query {
-    objects(filter: {type: "${package_addr}::suipredict::pool"}) {
-      nodes {
-        address
-      }
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
-    }
-  }
-`;
-
 export default function PoolList({
   mode = 'default',
   showControls = false,
@@ -231,11 +182,59 @@ export default function PoolList({
   useMockData = false,
   poolsData = []
 }: PoolListProps) {
-  const { data, isLoading, error } = useQuery<PoolsResponse>({
-    queryKey: ['pools'],
-    queryFn: () => graphQLFetcher({ query: POOLS_QUERY }),
-    enabled: !useMockData && poolsData.length === 0, // Only fetch when not using mock data or poolsData
-  });
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fetchedPools, setFetchedPools] = useState<Pool[]>([]);
+
+  useEffect(() => {
+    if (useMockData || poolsData.length > 0) {
+      return;
+    }
+
+    let isMounted = true;
+    setIsLoading(true);
+    setError(null);
+
+    const toNum = (value: any): number => {
+      if (value === null || value === undefined) return 0;
+      if (typeof value === 'string') return Number(value);
+      if (typeof value === 'number') return value;
+      if (typeof value === 'object') {
+        if (value.value !== undefined) return toNum(value.value);
+        if (value.fields?.value !== undefined) return toNum(value.fields.value);
+      }
+      return 0;
+    };
+
+    fetchPoolsFromChain()
+      .then((rawPools) => {
+        if (!isMounted) return;
+        const pools = rawPools.map((p) => {
+          const jsonData = p.json;
+          const balanceMist = toNum(jsonData.balance);
+          return {
+            address: p.objectId,
+            balance: `${balanceMist.toLocaleString()} MIST · ${(balanceMist / 1e9).toFixed(6)} SUI`,
+            endTime: Number(jsonData.end_time) || undefined,
+            status: jsonData.canRedeem || jsonData.can_redeem ? 'settled' : 'active',
+            can_redeem: Boolean(jsonData.canRedeem ?? jsonData.can_redeem),
+          } as Pool;
+        });
+        setFetchedPools(pools);
+      })
+      .catch((err: any) => {
+        if (!isMounted) return;
+        setError(err?.message || 'Failed to load pools');
+      })
+      .finally(() => {
+        if (!isMounted) return;
+        setIsLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [poolsData.length, useMockData]);
 
   if (!useMockData && poolsData.length === 0 && isLoading) {
     return (
@@ -252,7 +251,7 @@ export default function PoolList({
       <div className="min-h-screen w-full bg-[#0b0b0f] text-zinc-100">
         <div className="flex items-center justify-center p-8">
           <div className="text-red-400">
-            Error loading pools: {error instanceof Error ? error.message : 'Unknown error'}
+            Error loading pools: {error}
           </div>
         </div>
       </div>
@@ -266,7 +265,7 @@ export default function PoolList({
   } else if (useMockData) {
     pools = mockPools;
   } else {
-    pools = data?.objects?.nodes || [];
+    pools = fetchedPools;
   }
 
   if (mode === 'admin') {
@@ -322,10 +321,10 @@ export default function PoolList({
           </div>
         )}
 
-        {!useMockData && poolsData.length === 0 && data?.objects?.pageInfo?.hasNextPage && (
+        {!useMockData && poolsData.length === 0 && (
           <div className="mt-6 text-center">
             <p className="text-sm text-zinc-500">
-              More pools available (pagination not implemented)
+              Add pool IDs to local storage to show more pools.
             </p>
           </div>
         )}

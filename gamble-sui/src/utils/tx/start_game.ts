@@ -1,7 +1,7 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { package_addr } from "../package";
 
-export const start_game = (adminCap, p_price) => {
+export const start_game = (adminCap: string, p_price: number | string) => {
     const tx = new Transaction();
     tx.moveCall({
         target: `${package_addr}::suipredict::start_game`,

@@ -9,19 +9,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Ticket, Coins, Wallet, History, LineChart } from "lucide-react";
-import { graphQLFetcher } from "@/utils/GQLcli";
 import { package_addr } from "@/utils/package";
+import { fetchPoolsFromChain } from "@/utils/pool-ids";
 import {
   useCurrentAccount,
-  useSignAndExecuteTransaction,
-  useSuiClient,
-} from "@mysten/dapp-kit";
+  useDAppKit,
+} from "@mysten/dapp-kit-react";
 import { buyTicket } from "@/utils/tx/buy_ticket";
 import { redeem } from "@/utils/tx/redeem";
 
 // ---- Stat component ----
 interface TicketItem {
   id: string;
+  poolId: string | null; // actual pool object ID for redeem
   round: string;
   quote: number;
   stake: number;
@@ -86,10 +86,10 @@ function formatDuration(ms: number) {
 function generateDemoTickets(): TicketItem[] {
   const now = Date.now();
   return [
-    { id: "T-1001", round: "Round 128", quote: 4.62, stake: 3, status: "Active", placedAt: now - 1000 * 60 * 20 },
-    { id: "T-1000", round: "Round 127", quote: 4.75, stake: 2, status: "Settled", placedAt: now - 1000 * 60 * 70 },
-    { id: "T-0999", round: "Round 127", quote: 4.81, stake: 1, status: "Won", placedAt: now - 1000 * 60 * 75 },
-    { id: "T-0998", round: "Round 126", quote: 4.55, stake: 4, status: "Lost", placedAt: now - 1000 * 60 * 180 },
+    { id: "T-1001", poolId: null, round: "Round 128", quote: 4.62, stake: 3, status: "Active", placedAt: now - 1000 * 60 * 20 },
+    { id: "T-1000", poolId: null, round: "Round 127", quote: 4.75, stake: 2, status: "Settled", placedAt: now - 1000 * 60 * 70 },
+    { id: "T-0999", poolId: null, round: "Round 127", quote: 4.81, stake: 1, status: "Won", placedAt: now - 1000 * 60 * 75 },
+    { id: "T-0998", poolId: null, round: "Round 126", quote: 4.55, stake: 4, status: "Lost", placedAt: now - 1000 * 60 * 180 },
   ];
 }
 
@@ -109,13 +109,22 @@ function formatSui(n: number) {
   return `${n.toLocaleString(undefined, { maximumFractionDigits: 4 })} SUI`;
 }
 
+/** Show MIST for amounts < 1 SUI, SUI otherwise */
+function formatPot(sui: number): string {
+  if (sui === 0) return "0 MIST";
+  const mist = Math.round(sui * 1e9);
+  if (sui < 1) return `${mist.toLocaleString()} MIST`;
+  return `${sui.toLocaleString(undefined, { maximumFractionDigits: 4 })} SUI`;
+}
+
+
 function formatPrice(n: number) {
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: 4 })}`;
 }
 
 export default function GambleSUIPage() {
-  const client = useSuiClient();
   const acc = useCurrentAccount();
+  const dAppKit = useDAppKit();
   // state for tickets
   const [tickets, setTickets] = useState<TicketItem[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("All");
@@ -138,39 +147,17 @@ export default function GambleSUIPage() {
   const [coinsLoading, setCoinsLoading] = useState(false);
   const [coinsError, setCoinsError] = useState<string | null>(null);
 
-  const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction({
-    execute: async ({ bytes, signature }) =>
-      await client.executeTransactionBlock({
-        transactionBlock: bytes,
-        signature,
-        options: {
-          showRawEffects: true,
-          showObjectChanges: true,
-        },
-      }),
-  });
-
   async function fetchTicket() {
     if (!acc?.address) {
       setTickets([]);
       return;
     }
     try {
-      const data: any = await graphQLFetcher({
-        query: `
-                          query {
-                            owner(address:"${acc.address}"){ 
-                              objects(filter:{type:"${package_addr}::suipredict::Ticket"}){
-                                nodes{
-                                  address
-                                  contents{
-                                    json
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        `,
+      const client = dAppKit.getClient();
+      const response = await client.listOwnedObjects({
+        owner: acc.address,
+        type: `${package_addr}::suipredict::Ticket`,
+        include: { json: true },
       });
 
       const toNum = (v: any): number => {
@@ -186,24 +173,29 @@ export default function GambleSUIPage() {
       };
       const fromFixed = (u64Scaled: number) => u64Scaled / 1e9;
 
-      const nodes: any[] = data?.owner?.objects?.nodes ?? [];
+      const nodes = response.objects ?? [];
       const now = Date.now();
 
       const mapped: TicketItem[] = nodes.map((n) => {
-        const address: string = n?.address;
-        const jsonContents = n?.contents?.json;
+        const address: string = n?.objectId;
+        const jsonContents = n?.json;
         
         if (!jsonContents) {
           console.warn("No JSON contents for ticket:", address);
           return null;
         }
 
-        const priceU64 = toNum(jsonContents.price);
-        const poolId = jsonContents.pool_id;
+        const priceU64 = toNum((jsonContents as any).price);
+        const poolId = (jsonContents as any).pool_id;
 
         // match to loaded pool (if present) for name, price, and expiry
-        const pool = poolId ? pools.find((p) => p.id === poolId) : undefined;
-        const roundName = pool ? pool.name : (poolId ? `Round ${poolId.slice(2, 6).toUpperCase()}` : "Round ?");
+        const poolIdValue = typeof poolId === "string" ? poolId : poolId?.id;
+        const pool = poolIdValue ? pools.find((p) => p.id === poolIdValue) : undefined;
+        const roundName = pool
+          ? pool.name
+          : poolIdValue
+            ? `Round ${poolIdValue.slice(2, 6).toUpperCase()}`
+            : "Round ?";
         const stakeSui = pool ? pool.ticketPrice : 0;
         const isActive = pool ? pool.expiresAt - Date.now() > 0 : true;
         
@@ -217,6 +209,7 @@ export default function GambleSUIPage() {
 
         const t: TicketItem = {
           id: address,
+          poolId: poolIdValue ?? null,
           round: roundName,
           quote: fromFixed(priceU64),
           stake: stakeSui,
@@ -233,33 +226,17 @@ export default function GambleSUIPage() {
       console.error("fetchTicket error", err);
     }
   }
-  // GraphQL fetcher: load Pools from chain
+  // GraphQL fetcher: load Pools from chain by type
   const fetchPools = React.useCallback(async () => {
     setPoolsLoading(true);
     setPoolsError(null);
     try {
-      const data: any = await graphQLFetcher({
-        query: `
-          {
-            objects(
-              filter: { type: "${package_addr}::suipredict::Pool" }
-            ) {
-              edges {
-                node {
-                  address
-                  asMoveObject {
-                    contents {
-                      type { layout }
-                      json
-                      data
-                    }
-                  }
-                }
-              }
-            }
-          }
-        `,
-      });
+      const rawPools = await fetchPoolsFromChain();
+      if (rawPools.length === 0) {
+        setPools([]);
+        setPoolsError("No active pools found on chain.");
+        return;
+      }
 
       const WINDOW_MS = 100000; // must match suipredict.create_pool window
       const toNum = (v: any): number => {
@@ -274,47 +251,17 @@ export default function GambleSUIPage() {
       };
       const toSui = (mist: number) => mist / 1e9;
 
-      const edges: any[] = data?.objects?.edges ?? [];
-      const mapped: PoolItem[] = edges
-        .map((e) => {
-          const node = e?.node ?? {};
-          const addr: string | undefined = node.address;
-          const contents = node?.asMoveObject?.contents;
-          const rawData: any = contents?.data ?? {};
-          const jsonData: any = contents?.json ?? {};
-          
-          const dataFieldMap = (Array.isArray(rawData.Struct) ? rawData.Struct : Object.values(rawData.Struct))
-            .reduce((acc: Record<string, any>, field: any) => {
-              acc[field.name] = field.value;
-              return acc;
-            }, {} as Record<string, any>);
-          const endTime = dataFieldMap["end_time"]?.Number;
-          
-          if (!addr || !dataFieldMap) return null;
-          const priceU64 = toNum(dataFieldMap.price ?? dataFieldMap?.fields?.price);
-          
-          // Balance<SUI> can be nested; try common shapes
-          let balanceMist = 0;
-          const bal = dataFieldMap.balance ?? dataFieldMap?.fields?.balance;
-          if (bal) {
-            balanceMist = toNum(bal);
-          }
-          
-          // Extract canRedeem from JSON data (similar to admin component)
-          let canRedeem = false;
-          if (jsonData.canRedeem !== undefined) {
-            canRedeem = jsonData.canRedeem;
-          } else if (jsonData.can_redeem !== undefined) {
-            canRedeem = jsonData.can_redeem;
-          } else if (jsonData.fields?.canRedeem !== undefined) {
-            canRedeem = jsonData.fields.canRedeem;
-          } else if (jsonData.fields?.can_redeem !== undefined) {
-            canRedeem = jsonData.fields.can_redeem;
-          }
-          
+      const mapped: PoolItem[] = rawPools
+        .map((p) => {
+          const addr = p.objectId;
+          const jsonData = p.json;
+
+          const priceU64 = toNum(jsonData.price);
+          const balanceMist = toNum(jsonData.balance);
+          const canRedeem = Boolean(jsonData.canRedeem ?? jsonData.can_redeem);
           const ticketPrice = toSui(priceU64);
           const potSui = toSui(balanceMist);
-          const expiresAt = Number(endTime) || 0;
+          const expiresAt = Number(jsonData.end_time) || 0;
           const createdAt = expiresAt > 0 ? Math.max(expiresAt - WINDOW_MS, 0) : 0;
 
           return {
@@ -353,28 +300,9 @@ export default function GambleSUIPage() {
     setCoinsLoading(true);
     setCoinsError(null);
     try {
-      const data: any = await graphQLFetcher({
-        query: `
-        {
-          owner(
-            address: "${acc.address}"
-          ) {
-            coins {
-              nodes {
-                address
-              }
-            }
-          }
-        }
-      `,
-      });
-
-      const nodes: Array<{ address?: string }> =
-        data?.owner?.coins?.nodes ?? [];
-
-      const list = nodes
-        .map((n) => n?.address)
-        .filter((x): x is string => typeof x === "string");
+      const client = dAppKit.getClient();
+      const data = await client.listCoins({ owner: acc.address });
+      const list = data.objects.map((coin) => coin.objectId);
 
       setCoins(list);
       return list;
@@ -394,6 +322,10 @@ export default function GambleSUIPage() {
   );
 
   const handleConfirm = async () => {
+    if (!selectedPoolId || !acc?.address) {
+      alert("Pool not selected or wallet not connected");
+      return;
+    }
 
     let coin_result = await fetchCoin()
     console.log(selectedPoolId, coin_result, quote)
@@ -405,33 +337,14 @@ export default function GambleSUIPage() {
       Number(Number(quote) * 1000000000),
       acc?.address
     )
-    signAndExecuteTransaction(
-      {
-        transaction: tx,
-        chain: 'sui:testnet',
-      },
-      {
-        onSuccess: (result) => {
-          console.log("Transaction successful:", result);
-          console.log("Transaction digest:", result.digest);
-          console.log("Transaction effects:", result.effects);
-          console.log("Object changes:", result.objectChanges);
-          console.log("Raw effects:", result.rawEffects);
-          alert(
-            "Game started successfully! Transaction digest: " + result.digest
-          );
-          // refresh tickets from chain
-          fetchTicket();
-        },
-        onError: (error) => {
-          console.error("Transaction failed:", error);
-          alert(
-            "Transaction failed: " +
-            (error instanceof Error ? error.message : String(error))
-          );
-        },
-      }
-    );
+    const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
+    if (result.FailedTransaction) {
+      alert("Transaction failed: " + (result.FailedTransaction.status.error?.message ?? "Unknown error"));
+      return;
+    }
+    console.log("Transaction successful, digest:", result.Transaction.digest);
+    alert("Ticket purchased! Transaction digest: " + result.Transaction.digest);
+    fetchTicket();
 
     // Update pot optimistically
     const delta = (Number(quantity) || 0) * (Number(ticketPrice) || 0);
@@ -455,36 +368,21 @@ export default function GambleSUIPage() {
     }
 
     try {
-      // Find the pool for this ticket
-      const pool = pools.find(p => p.name === ticket.round);
-      if (!pool) {
+      const poolId = ticket.poolId ?? pools.find(p => p.name === ticket.round)?.id;
+      if (!poolId) {
         alert("Pool not found for this ticket");
         return;
       }
 
-      const tx = redeem(ticket.id, pool.id);
+      const tx = redeem(ticket.id, poolId);
       
-      signAndExecuteTransaction(
-        {
-          transaction: tx,
-          chain: 'sui:testnet',
-        },
-        {
-          onSuccess: (result) => {
-            console.log("Redeem successful:", result);
-            alert("Ticket redeemed successfully! Transaction digest: " + result.digest);
-            // refresh tickets from chain
-            fetchTicket();
-          },
-          onError: (error) => {
-            console.error("Redeem failed:", error);
-            alert(
-              "Redeem failed: " +
-              (error instanceof Error ? error.message : String(error))
-            );
-          },
-        }
-      );
+      const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
+      if (result.FailedTransaction) {
+        throw new Error(result.FailedTransaction.status.error?.message ?? "Redeem failed");
+      }
+      console.log("Redeem successful, digest:", result.Transaction.digest);
+      alert("Ticket redeemed successfully! Transaction digest: " + result.Transaction.digest);
+      fetchTicket();
     } catch (error) {
       console.error("Redeem error:", error);
       alert("Failed to redeem ticket: " + (error instanceof Error ? error.message : String(error)));
@@ -669,9 +567,9 @@ export default function GambleSUIPage() {
                         <div className="mt-1 text-xs text-zinc-500">ID: {selectedPool.id}</div>
                       </div>
                       <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
-                        <div className="text-xs text-zinc-400">Pot (SUI)</div>
+                        <div className="text-xs text-zinc-400">Pot</div>
                         <div className="mt-1 text-base font-medium flex items-baseline gap-2">
-                          {selectedPool.potSui.toLocaleString(undefined, { maximumFractionDigits: 2 })} SUI
+                          {formatPot(selectedPool.potSui)}
                           {potDelta && potDelta > 0 && (
                             <span
                               className={[
@@ -679,11 +577,13 @@ export default function GambleSUIPage() {
                                 flashPot ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1"
                               ].join(" ")}
                             >
-                              +{potDelta.toLocaleString(undefined, { maximumFractionDigits: 2 })} SUI
+                              +{formatPot(potDelta)}
                             </span>
                           )}
                         </div>
-                        <div className="mt-1 text-xs text-zinc-500">Ticket Price: {selectedPool.ticketPrice} SUI</div>
+                        <div className="mt-1 text-xs text-zinc-500">
+                          Ticket: {formatPot(selectedPool.ticketPrice)}
+                        </div>
 
                       </div>
                       <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
@@ -833,7 +733,7 @@ export default function GambleSUIPage() {
                         <TableHead className="text-zinc-300">Pool</TableHead>
                         <TableHead className="text-zinc-300">Expires</TableHead>
                         <TableHead className="text-zinc-300">Time Left</TableHead>
-                        <TableHead className="text-zinc-300">Pot (SUI)</TableHead>
+                        <TableHead className="text-zinc-300">Pot</TableHead>
                         <TableHead className="text-right text-zinc-300">Action</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -876,7 +776,7 @@ export default function GambleSUIPage() {
                               {formatDuration(timeLeft)}
                             </TableCell>
                             <TableCell className={selected ? "text-zinc-100" : undefined}>
-                              {p.potSui.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                              {formatPot(p.potSui)}
                             </TableCell>
                             <TableCell className="text-right">
                               <Button

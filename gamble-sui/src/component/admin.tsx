@@ -22,35 +22,21 @@ import {
 } from "@/components/ui/dialog";
 import { Settings, Shield, Play, Clock } from "lucide-react";
 import PoolList from "./poollist";
-import { Transaction } from "@mysten/sui/transactions";
 import { start_game } from "@/utils/tx/start_game";
 import {
   useCurrentAccount,
-  useSignAndExecuteTransaction,
-  useSuiClient,
-} from "@mysten/dapp-kit";
-import { graphQLFetcher } from "@/utils/GQLcli";
+  useDAppKit,
+} from "@mysten/dapp-kit-react";
 import { package_addr } from "@/utils/package";
+import { fetchPoolsFromChain } from "@/utils/pool-ids";
 
 const Admin = () => {
-  const client = useSuiClient();
   const acc = useCurrentAccount();
+  const dAppKit = useDAppKit();
   const [pricePerTicket, setPricePerTicket] = useState<string>("1000");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [pools, setPools] = useState<any[]>([]);
   const [poolsLoading, setPoolsLoading] = useState<boolean>(false);
-
-  const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction({
-    execute: async ({ bytes, signature }) =>
-      await client.executeTransactionBlock({
-        transactionBlock: bytes,
-        signature,
-        options: {
-          showRawEffects: true,
-          showObjectChanges: true,
-        },
-      }),
-  });
 
   // Fetch pools on component mount
   useEffect(() => {
@@ -60,38 +46,18 @@ const Admin = () => {
   async function fetchPools() {
     setPoolsLoading(true);
     try {
-      const [poolResult] = await Promise.all([
-        graphQLFetcher({
-          query: `
-            query {
-              objects(
-                filter: {
-                  type: "${package_addr}::suipredict::Pool"
-                }
-              ) {
-                edges {
-                  node {
-                    address
-                    asMoveObject {
-                      contents {
-                        json
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          `,
-        }),
-      ]);
+      const client = dAppKit.getClient();
+      const rawPools = await fetchPoolsFromChain();
+      if (rawPools.length === 0) {
+        setPools([]);
+        return;
+      }
 
-      console.log("Full Pool JSON:", JSON.stringify(poolResult, null, 2));
-
-      // Extract pool addresses and JSON contents
-      const poolData = poolResult?.objects?.edges?.map((edge: any) => ({
-        address: edge.node.address,
-        contents: edge.node.asMoveObject?.contents?.json || {}
-      })) || [];
+      const poolData = rawPools.map((p) => ({
+        address: p.objectId,
+        contents: p.json,
+        previousTransaction: p.previousTransaction,
+      }));
 
       // Extract pool addresses for creator queries
       const poolAddresses = poolData.map((pool: any) => pool.address);
@@ -99,22 +65,25 @@ const Admin = () => {
       // Fetch creator information for each pool
       const creatorPromises = poolAddresses.map(async (address: string) => {
         try {
-          const creatorResult = await graphQLFetcher({
-            query: `
-              {
-                object(address:"${address}"){
-                  previousTransactionBlock{
-                    sender{
-                      address
-                    }
-                  }
-                }
-              }
-            `,
+          const poolInfo = poolData.find((pool) => pool.address === address);
+          const previousTx = poolInfo?.previousTransaction;
+          if (!previousTx) {
+            return {
+              poolAddress: address,
+              creator: "0x" + "a".repeat(40),
+            };
+          }
+
+          const creatorResult = await client.getTransaction({
+            digest: previousTx,
+            include: { transaction: true },
           });
+
+          const tx = creatorResult.Transaction ?? creatorResult.FailedTransaction;
+          const sender = tx?.transaction?.sender;
           return {
             poolAddress: address,
-            creator: creatorResult?.object?.previousTransactionBlock?.sender?.address || "0x" + "a".repeat(40)
+            creator: sender || "0x" + "a".repeat(40)
           };
         } catch (error) {
           console.error(`Error fetching creator for pool ${address}:`, error);
@@ -153,13 +122,18 @@ const Admin = () => {
         }
         console.log(`Pool ${pool.address} canRedeem:`, canRedeem);
         
+        const balanceMist = Number(contents.balance ?? 0);
+        const endTimeMs = Number(contents.end_time ?? 0);
+
         return {
           address: pool.address,
           creator: creatorMap[pool.address] || "0x" + "a".repeat(40),
-          balance: `${Math.floor(Math.random() * 3000) + 500}.${Math.floor(Math.random() * 100).toString().padStart(2, '0')} SUI`, // Placeholder balance
-          endTime: new Date(Date.now() + Math.random() * 7 * 24 * 60 * 60 * 1000).getTime(), // Placeholder end time
+          balance: `${balanceMist.toLocaleString()} MIST · ${(balanceMist / 1e9).toFixed(6)} SUI`,
+          endTime: endTimeMs,
           status: "active",
-          can_redeem: canRedeem // Extract can_redeem from JSON contents with robust handling
+          can_redeem: canRedeem,
+          price: contents.price ?? "0",
+          fixed_price: contents.fixed_price ?? "0",
         };
       });
 
@@ -181,56 +155,28 @@ const Admin = () => {
     setIsLoading(true);
 
     try {
-      // Query for AdminCap
-      const [adminCapResult] = await Promise.all([
-        graphQLFetcher({
-          query: `
-            query {
-              owner(address:"${acc.address}"){
-                objects(filter:{type:"${package_addr}::suipredict::AdminCap"}){
-                  nodes{
-                    address
-                  }
-                }
-              }
-            }
-          `,
-        }),
-      ]);
+      const client = dAppKit.getClient();
+      const adminCapResult = await client.listOwnedObjects({
+        owner: acc.address,
+        type: `${package_addr}::suipredict::AdminCap`,
+      });
 
       console.log("AdminCap:", adminCapResult);
-      // console.log("Existing Pools:", poolResult);
-      if (!adminCapResult?.owner?.objects?.nodes?.length) {
+      if (!adminCapResult.objects.length) {
         alert("No AdminCap found for your address");
+        return;
       }
-      const adminCap = adminCapResult.owner.objects.nodes[0].address;
+      const adminCap = adminCapResult.objects[0].objectId;
 
       const tx = start_game(adminCap, Number(pricePerTicket));
 
-      signAndExecuteTransaction(
-        {
-          transaction: tx,
-        },
-        {
-          onSuccess: (result) => {
-            console.log("Transaction successful:", result);
-            console.log("Transaction digest:", result.digest);
-            console.log("Transaction effects:", result.effects);
-            console.log("Object changes:", result.objectChanges);
-            console.log("Raw effects:", result.rawEffects);
-            alert(
-              "Game started successfully! Transaction digest: " + result.digest
-            );
-          },
-          onError: (error) => {
-            console.error("Transaction failed:", error);
-            alert(
-              "Transaction failed: " +
-              (error instanceof Error ? error.message : String(error))
-            );
-          },
-        }
-      );
+      const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
+      if (result.FailedTransaction) {
+        throw new Error(result.FailedTransaction.status.error?.message ?? 'Transaction failed');
+      }
+      console.log("Transaction successful:", result.Transaction);
+      console.log("Transaction digest:", result.Transaction.digest);
+      alert("Game started successfully! Transaction digest: " + result.Transaction.digest);
     } catch (error) {
       console.error("Error starting game:", error);
       alert(

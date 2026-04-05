@@ -1,6 +1,6 @@
 "use client";
 
-import { ConnectButton } from "@mysten/dapp-kit";
+import { ConnectButton } from "./ConnectButton";
 
 interface NavBarProps {
     onTicketClick: () => void;

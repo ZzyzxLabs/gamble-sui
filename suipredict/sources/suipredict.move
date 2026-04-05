@@ -12,6 +12,7 @@ module suipredict::suipredict {
     const ECanNotRedeem: u64 = 0;
     const ETimeNotReached: u64 = 1;
     const EAccessDenied: u64 = 403;
+    const ENotWinner: u64 = 2;
 
     // declare types
     // declare oracle ID
@@ -32,7 +33,7 @@ module suipredict::suipredict {
         end_time: u64,
         oracleSetting: OracleSetting
     }
-    
+
     // declare ticket
     public struct Ticket has key, store {
         id: UID,
@@ -68,10 +69,10 @@ module suipredict::suipredict {
         p_price: u64,
         end_time: &Clock,
         ctx: &mut TxContext
-    ) { 
+    ) {
         // Create oracle setting
         let oracleSetting = create_oracle_setting(admin_cap, oracleID, ctx);
-        
+
         // Create prize pool
         create_pool(admin_cap, p_price, end_time, oracleSetting, ctx);
     }
@@ -118,7 +119,6 @@ module suipredict::suipredict {
         pPrice: u64,
         ctx: &mut TxContext
     ) {
-        // let buy_coin = coin::split(in_coin, (pool.price as u64), ctx);
         balance::join(&mut pool.balance, into_balance(in_coin));
         let ticket = Ticket {
             id: object::new(ctx),
@@ -134,36 +134,69 @@ module suipredict::suipredict {
         transfer::public_transfer(ticket, ctx.sender());
     }
 
-    // Fetch actual price from oracle
+    // Raise 10 to the power of exp (u128 to avoid intermediate overflow)
+    fun pow10(exp: u64): u128 {
+        let mut result = 1u128;
+        let mut i = 0u64;
+        while (i < exp) {
+            result = result * 10;
+            i = i + 1;
+        };
+        result
+    }
+
+    // Normalize raw oracle price to the same 1e9 scale used by ticket price predictions.
+    // Ticket prices are stored as (user_value * 1e9), so we do:
+    //   normalized = raw_price / 10^decimal * 10^9  =  raw_price / 10^(decimal - 9)
+    fun normalize_price(raw: u128, decimal: u16): u64 {
+        let dec = decimal as u64;
+        let target: u64 = 9;
+        if (dec >= target) {
+            (raw / pow10(dec - target)) as u64
+        } else {
+            (raw * pow10(target - dec)) as u64
+        }
+    }
+
+    // Fetch actual price from oracle (standalone helper — also called inside redeem_setting)
     public fun fixed_price(
         admin: &AdminCap,
         oracleHolder: &OracleHolder,
         pool: &mut Pool,
-        ctx: &mut TxContext
     ) {
-        let (price, decimal_u16, _, _) = get_price(oracleHolder, pool.oracleSetting.oracleID);
-        pool.fixed_price = (price as u64);
+        let (price, decimal, _, _) = get_price(oracleHolder, pool.oracleSetting.oracleID);
+        pool.fixed_price = normalize_price(price, decimal);
     }
 
-    // Redemption mechanism
+    // Redemption mechanism — fetches oracle price then determines winners atomically
     public fun redeem_setting(
         admin: &AdminCap,
+        oracleHolder: &OracleHolder,
         pool: &mut Pool,
         current_time: &Clock,
-        ctx: &mut TxContext
     ) {
         // Check if settlement is allowed
         assert!(clock::timestamp_ms(current_time) >= pool.end_time, ETimeNotReached);
 
+        // Snapshot and normalize oracle price to 1e9 scale (same as ticket predictions)
+        let (price, decimal, _, _) = get_price(oracleHolder, pool.oracleSetting.oracleID);
+        pool.fixed_price = normalize_price(price, decimal);
+
         let fixed_price = pool.fixed_price;
         let v_len = vector::length<TicketCopy>(&pool.idT);
+
+        // No tickets: mark redeemable (nothing to pay out) and return
+        if (v_len == 0) {
+            pool.canRedeem = true;
+            return
+        };
+
         let mut v_gap = vector::empty<u64>();
         let mut i = 0;
 
         while (i < v_len) {
             let b_ticket = vector::borrow<TicketCopy>(&pool.idT, i);
-            // avoid overflow
-            let gap = if (b_ticket.price > fixed_price){
+            let gap = if (b_ticket.price > fixed_price) {
                 b_ticket.price - fixed_price
             } else {
                 fixed_price - b_ticket.price
@@ -174,42 +207,55 @@ module suipredict::suipredict {
 
         let v_len_gap = vector::length<u64>(&v_gap);
         let mut min_val = *vector::borrow<u64>(&v_gap, 0);
-        let mut i_gap = 0;
+        // Reset indices before recomputing (guards against double-settling)
+        pool.indices = vector::empty<u64>();
+        vector::push_back<u64>(&mut pool.indices, 0);
+        let mut i_gap = 1;
 
         while (i_gap < v_len_gap) {
             let b_gap = *vector::borrow(&v_gap, i_gap);
             if (b_gap < min_val) {
                 min_val = b_gap;
                 pool.indices = vector::empty<u64>();
-                vector::push_back<u64>(&mut pool.indices, i_gap as u64);
+                vector::push_back<u64>(&mut pool.indices, i_gap);
             } else if (b_gap == min_val) {
-                vector::push_back<u64>(&mut pool.indices, i_gap as u64);
+                vector::push_back<u64>(&mut pool.indices, i_gap);
             };
             i_gap = i_gap + 1;
         };
         pool.canRedeem = true;
     }
 
-    // Winners redeem prize
+    // Winners redeem prize — ticket is consumed to prevent double-spend
     public fun redeem(
-        ticket: &mut Ticket,
+        ticket: Ticket,
         pool: &mut Pool,
         ctx: &mut TxContext
     ) {
         assert!(pool.canRedeem, ECanNotRedeem);
         assert!(ticket.pool_id == object::id(pool), EAccessDenied);
+
         let len_indices = vector::length<u64>(&pool.indices);
         let mut i = 0;
+        let mut is_winner = false;
 
         while (i < len_indices) {
             let index = *vector::borrow<u64>(&pool.indices, i);
             let b_ticket = vector::borrow<TicketCopy>(&pool.idT, index);
-            if (object::id(ticket) == b_ticket.copy_id) {
+            if (object::id(&ticket) == b_ticket.copy_id) {
                 let s_prize = balance::value<SUI>(&pool.balance) / (len_indices as u64);
-                let mut coin = coin::take<SUI>(&mut pool.balance, s_prize, ctx);
+                let coin = coin::take<SUI>(&mut pool.balance, s_prize, ctx);
                 transfer::public_transfer(coin, ctx.sender());
+                is_winner = true;
             };
             i = i + 1;
-        }
+        };
+
+        // Assert caller is a winner — prevents losers from burning their ticket for nothing
+        assert!(is_winner, ENotWinner);
+
+        // Consume the ticket to prevent double-redemption
+        let Ticket { id, .. } = ticket;
+        id.delete();
     }
 }

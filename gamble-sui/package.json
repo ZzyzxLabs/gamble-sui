@@ -10,8 +10,8 @@
     "format": "biome format --write"
   },
   "dependencies": {
-    "@mysten/dapp-kit": "^0.17.5",
-    "@mysten/sui": "^1.37.4",
+    "@mysten/dapp-kit-react": "^2.0.1",
+    "@mysten/sui": "^2.14.1",
     "@polymedia/suitcase-core": "^0.0.64",
     "@polymedia/suitcase-react": "^0.0.64",
     "@radix-ui/react-dialog": "^1.1.15",

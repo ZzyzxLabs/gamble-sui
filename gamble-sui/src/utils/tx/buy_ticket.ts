@@ -1,16 +1,16 @@
-import { Transaction } from "@mysten/sui/transactions";
+import { Transaction, coinWithBalance } from "@mysten/sui/transactions";
 import { package_addr } from "../package";
-import { coinWithBalance } from "@mysten/sui/transactions";
 
-export const buyTicket = (pool, in_coin,ticketPrice,pPrice,sender) => {
+export const buyTicket = (pool: string, _in_coin: unknown, ticketPrice: number, pPrice: number, sender: string) => {
     const tx = new Transaction();
-    const con = coinWithBalance({balance:ticketPrice,useGasCoin:true});
+    tx.setSender(sender);
+    const con = coinWithBalance({ balance: ticketPrice });
     tx.moveCall({
         target: `${package_addr}::suipredict::buy_ticket`,
         arguments: [
             tx.object(pool),
             con,
-            tx.pure.u64(pPrice), // need to change type in contract
+            tx.pure.u64(pPrice),
         ]
     });
     return tx;
